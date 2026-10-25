@@ -1,0 +1,22 @@
+<!-- Windows service definition read by WinSW (HostMyGameService.exe) on every start. -->
+<service>
+  <id>HostMyGame</id>
+  <name>Host My Game</name>
+  <description>Painel para hospedar servidores de jogos (http://localhost:8082).</description>
+  <executable>%BASE%\node\node.exe</executable>
+  <arguments>"%BASE%\app\src\server.js"</arguments>
+  <workingdirectory>%BASE%\app</workingdirectory>
+  <env name="HMG_DATA_DIR" value="%ProgramData%\HostMyGame"/>
+  <env name="HMG_INSTALLED" value="1"/>
+  <startmode>Automatic</startmode>
+  <!-- Ctrl+C goes to the panel first so it can stop the game servers cleanly. -->
+  <stopparentprocessfirst>true</stopparentprocessfirst>
+  <stoptimeout>120 sec</stoptimeout>
+  <onfailure action="restart" delay="10 sec"/>
+  <resetfailure>1 hour</resetfailure>
+  <logpath>%ProgramData%\HostMyGame\logs</logpath>
+  <log mode="roll-by-size">
+    <sizeThreshold>10240</sizeThreshold>
+    <keepFiles>5</keepFiles>
+  </log>
+</service>

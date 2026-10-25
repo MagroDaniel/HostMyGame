@@ -1,0 +1,40 @@
+# Pushing a tag like v0.4.0 builds the installer and publishes it as a GitHub Release,
+# which installed panels pick up as an available update.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.14.0'
+
+      - name: Conferir versão
+        shell: pwsh
+        run: |
+          $v = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ("v$v" -ne $env:GITHUB_REF_NAME) { throw "package.json diz $v, mas a tag é $env:GITHUB_REF_NAME" }
+
+      - name: Instalar Inno Setup
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+
+      - name: Gerar instalador
+        shell: pwsh
+        run: ./installer/build.ps1 -Repo $env:GITHUB_REPOSITORY
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: installer/build/HostMyGame-Setup-*.exe
+          generate_release_notes: true
