@@ -1,3 +1,4 @@
 node_modules/
 data/
 installer/build/
+_to_delete/
