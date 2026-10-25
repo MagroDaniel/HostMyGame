@@ -26,7 +26,8 @@ WizardStyle=modern
 CloseApplications=no
 RestartApplications=no
 UninstallDisplayName=Host My Game
-UninstallDisplayIcon={app}\node\node.exe
+UninstallDisplayIcon={app}\logo.ico
+SetupIconFile=logo.ico
 SetupLogging=yes
 
 [Languages]
@@ -44,6 +45,8 @@ Name: "{commonappdata}\HostMyGame"
 
 [INI]
 Filename: "{group}\Abrir o painel.url"; Section: "InternetShortcut"; Key: "URL"; String: "{#PanelUrl}"
+Filename: "{group}\Abrir o painel.url"; Section: "InternetShortcut"; Key: "IconFile"; String: "{app}\logo.ico"
+Filename: "{group}\Abrir o painel.url"; Section: "InternetShortcut"; Key: "IconIndex"; String: "0"
 
 [Icons]
 Name: "{group}\Pasta de dados"; Filename: "{commonappdata}\HostMyGame"

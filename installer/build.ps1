@@ -44,7 +44,7 @@ try {
 
 Copy-Item (Get-Cached "https://nodejs.org/dist/v$NodeVersion/win-x64/node.exe" "node-$NodeVersion.exe") (Join-Path $stage 'node\node.exe')
 Copy-Item (Get-Cached "https://github.com/winsw/winsw/releases/download/v$WinSWVersion/WinSW-x64.exe" "WinSW-$WinSWVersion-x64.exe") (Join-Path $stage 'HostMyGameService.exe')
-Copy-Item (Join-Path $PSScriptRoot 'HostMyGameService.xml') $stage
+Copy-Item (Join-Path $PSScriptRoot 'HostMyGameService.xml'), (Join-Path $PSScriptRoot 'logo.ico') $stage
 
 $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
 if (-not $iscc) { $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source }
