@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { TOOLS_DIR } from '../store.js';
+import { TOOLS_DIR, db } from '../store.js';
 import { IS_WIN, download, extract, run, serialized } from '../util.js';
 import { installApp as accountInstall } from './depotdownloader.js';
 
@@ -42,8 +42,16 @@ async function steamcmd(args, { log, onSpawn, isDone }) {
 }
 
 // Games that need an account go through DepotDownloader, which keeps the session from the QR or password login.
+// An anonymous download refused with "No subscription" is retried with the connected account, if there is one.
 export async function installApp(opts) {
-  if (opts.login !== 'account') return installAnonymous(opts);
+  if (opts.login !== 'account') {
+    try {
+      return await installAnonymous(opts);
+    } catch (e) {
+      if (!e.noSubscription || !db.steamUser) throw e;
+      opts.log(`Este servidor não baixa sem conta; tentando de novo com a conta Steam ${db.steamUser}...`);
+    }
+  }
   await accountInstall(opts);
   // DepotDownloader doesn't write Steam's app manifest; a minimal one keeps installedBuild() and update checks working.
   const build = latestBuild((await appInfo([opts.appId]))[opts.appId], opts.branch);
@@ -71,7 +79,10 @@ function installAnonymous({ dir, appId, branch, betaPassword, log, onSpawn }) {
         log(line);
       },
     });
-    if (!success) throw new Error(`SteamCMD não confirmou a instalação${failure ? `: ${failure}` : ` (código ${code})`}`);
+    if (!success) {
+      throw Object.assign(new Error(`SteamCMD não confirmou a instalação${failure ? `: ${failure}` : ` (código ${code})`}`),
+        { noSubscription: /No subscription/.test(failure || '') });
+    }
   });
 }
 

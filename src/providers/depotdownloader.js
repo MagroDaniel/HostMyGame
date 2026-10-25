@@ -55,6 +55,18 @@ function qrCollector(onQr) {
   };
 }
 
+// Questions like "Enter account password:" or the Steam Guard code prompt end without a newline, so line
+// reading never sees them; this watches the raw output for the unfinished last line.
+const PROMPT = /(STEAM GUARD!|Please enter|Enter account password)/i;
+function watchPrompts(child, onPrompt) {
+  let tail = '', shown = '';
+  child.stdout.on('data', chunk => {
+    tail = (tail + String(chunk)).slice(-500);
+    const last = tail.split(/\r?\n/).pop().trim();
+    if (last && last !== shown && PROMPT.test(last)) { shown = last; onPrompt(last); }
+  });
+}
+
 // Signs in and stores the session. Without a password it shows a QR code (onQr receives the module matrix).
 // With a password, Steam Guard either asks for a code (answer through the child's stdin) or for approval in the app.
 export function login({ username, password, log, onQr, onSpawn }) {
@@ -70,6 +82,9 @@ export function login({ username, password, log, onQr, onSpawn }) {
       cwd: DIR,
       onSpawn: child => {
         onSpawn?.(child);
+        watchPrompts(child, text => log(/2.factor|authenticator/i.test(text)
+          ? `${text}  →  digite o código do app Steam Guard no campo abaixo`
+          : /email/i.test(text) ? `${text}  →  digite o código enviado ao seu e-mail no campo abaixo` : text));
         // Steam keeps renewing the QR code forever; give up after a while so the queue isn't held.
         if (!password) timer = setTimeout(() => { expired = true; child.kill(); }, QR_TIMEOUT);
       },
@@ -102,17 +117,19 @@ export function installApp({ dir, appId, branch, betaPassword, log, onSpawn }) {
     const args = ['-app', String(appId), '-username', db.steamUser, '-remember-password', '-dir', dir];
     if (branch) args.push('-branch', branch);
     if (betaPassword) args.push('-branchpassword', betaPassword);
-    let done = false, failure = null, child = null;
+    let done = false, failure = null;
+    const expired = 'a sessão da Steam expirou ou não existe neste PC. Entre de novo em Configurações > Conta Steam.';
     const code = await run(exe, args, {
       cwd: DIR,
-      onSpawn: c => { child = c; onSpawn?.(c); },
+      onSpawn: child => {
+        onSpawn?.(child);
+        // Nobody can answer here: any question means there is no usable saved session.
+        child.stdin.end();
+        watchPrompts(child, () => { failure = expired; child.kill(); });
+      },
       onLine: line => {
         if (/Total downloaded:/.test(line)) done = true;
-        if (/Enter account password|has stored credentials|Please enter .*code/i.test(line)) {
-          failure = 'a sessão da Steam expirou. Entre de novo em Configurações > Conta Steam.';
-          child?.kill();
-          return;
-        }
+        if (/has stored credentials|Enter account password|Please enter/i.test(line)) failure = expired;
         if (/Depot \d+ is not available from this account/.test(line)) failure = 'a conta Steam conectada não tem este jogo';
         const bad = line.match(/Unable to login to Steam3: (\w+)|Access token was rejected \((\w+)\)/);
         if (bad) failure = `a Steam recusou o login (${bad[1] || bad[2]}). Entre de novo em Configurações > Conta Steam.`;

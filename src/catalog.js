@@ -584,7 +584,7 @@ const CURATED = [
     console: 'stdin', query: { type: 'a2s', port: '{{queryPort}}' }, backupPaths: 'server_config.cfg', configFiles: ['server_config.cfg'],
   },
   {
-    id: 'assettocorsa', name: 'Assetto Corsa', category: 'Corrida', steam: { appId: '302550' }, image: img(244210), platforms: ['windows'],
+    id: 'assettocorsa', name: 'Assetto Corsa', category: 'Corrida', steam: { appId: '302550', login: 'account' }, image: img(244210), platforms: ['windows'],
     exe: 'acServer.exe', args: '',
     settings: [S.serverName(), S.password(), S.adminPassword(), S.maxPlayers(18), S.port(9600), { key: 'httpPort', label: 'Porta HTTP', type: 'port', default: 8091 }],
     configWrites: [{ path: 'cfg/server_cfg.ini', format: 'ini', values: { '[SERVER]NAME': '{{serverName}}', '[SERVER]PASSWORD': '{{password}}', '[SERVER]ADMIN_PASSWORD': '{{adminPassword}}', '[SERVER]MAX_CLIENTS': '{{maxPlayers}}', '[SERVER]UDP_PORT': '{{port}}', '[SERVER]TCP_PORT': '{{port}}', '[SERVER]HTTP_PORT': '{{httpPort}}' } }],
