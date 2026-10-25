@@ -1,11 +1,14 @@
 import * as modrinth from './modrinth.js';
+import * as curseforge from './curseforge.js';
+import * as modpacks from './modpacks.js';
 import * as workshop from './workshop.js';
 
-export { modrinth, workshop };
+export { modrinth, curseforge, modpacks, workshop };
 
-// 'modrinth' (Minecraft with a mod/plugin loader), 'workshop' (Steam Workshop) or null.
+// 'modrinth' (Minecraft Java: mods/plugins from Modrinth and CurseForge, and modpacks; vanilla gets only
+// modpacks), 'workshop' (Steam Workshop) or null.
 export function modKind(inst) {
-  if (modrinth.supportsModrinth(inst)) return 'modrinth';
+  if (modrinth.supportsModrinth(inst) || modpacks.supportsModpacks(inst)) return 'modrinth';
   if (workshop.supportsWorkshop(inst)) return 'workshop';
   return null;
 }

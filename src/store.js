@@ -15,6 +15,7 @@ const defaults = () => ({
   port: 8082,
   instancesDir: '',
   steamUser: '',
+  curseforgeKey: '',
   users: [],
   instances: [],
 });

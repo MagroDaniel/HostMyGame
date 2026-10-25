@@ -36,6 +36,9 @@ const minecraftJava = (flavor, name, description) => ({
   description, eula: true,
   settings: [
     { key: 'version', label: 'Versão do Minecraft', type: 'text', default: 'latest', hint: '"latest" = sempre a mais recente; ou ex.: 1.21.4' },
+    ...(['fabric', 'forge', 'neoforge'].includes(flavor)
+      ? [{ key: 'loaderVersion', label: `Versão do ${{ fabric: 'Fabric Loader', forge: 'Forge', neoforge: 'NeoForge' }[flavor]}`, type: 'text', default: '', advanced: true, hint: 'Vazio = a recomendada. Os modpacks preenchem sozinhos (ex.: 47.2.0).' }]
+      : []),
     S.memory(4096),
     S.port(25565),
     S.maxPlayers(20),

@@ -1,4 +1,4 @@
-import { $, $$, act, api, confirmDialog, esc, fmtBytes, icon, instApi, joinPath, toast } from '../core.js';
+import { $, $$, act, api, confirmDialog, esc, fmtBytes, icon, instApi, joinPath, openModal, toast } from '../core.js';
 
 // Mods tab: Modrinth (Minecraft mods/plugins) or Steam Workshop (Project Zomboid).
 let poll = null;
@@ -28,39 +28,58 @@ function jobBanner(job) {
   return '';
 }
 
-// ---------- Minecraft (Modrinth) ----------
+// ---------- Minecraft (Modrinth, CurseForge and modpacks) ----------
 let mrView = 'installed';
+let mrSource = 'modrinth';
 let mrSearch = { q: '', hits: [], total: 0, offset: 0 };
 let mrUpdates = null;
 
+const SOURCES = { modrinth: 'Modrinth', curseforge: 'CurseForge' };
+
+function sourceSeg(data, current) {
+  if (!data.curseforge.available && current === 'modrinth' && mrView !== 'modpacks') return '';
+  return `<div class="seg">${Object.entries(SOURCES).map(([k, l]) => `<button type="button" data-src="${k}" class="${current === k ? 'active' : ''}">${l}</button>`).join('')}</div>`;
+}
+
+const needKey = () => `<div class="empty-state"><h2>Falta a chave do CurseForge</h2><p>O CurseForge só libera a busca com uma chave pessoal e gratuita. Configure em <a href="#/settings">Configurações → CurseForge</a> (leva um minuto).</p></div>`;
+
 function renderModrinth(body, d, data) {
   const plugins = data.type === 'plugins';
+  const vanilla = data.type === 'none';
   const noun = plugins ? 'plugins' : 'mods';
-  const installedIds = new Set(data.installed.map(m => m.projectId).filter(Boolean));
+  if (vanilla) mrView = 'modpacks';
+  if (mrView === 'browse' && mrSource === 'curseforge' && !data.curseforge.available) mrSource = 'modrinth';
+  const installedIds = new Set(data.installed.map(m => m.projectId || (m.cfModId && `cf:${m.cfModId}`)).filter(Boolean));
   const updates = mrUpdates?.id === d.id ? mrUpdates.list : null;
   const updCount = updates ? Object.keys(updates).length : 0;
   body.innerHTML = `
     <div id="modsRoot">
+      ${jobBanner(data.job)}
       <div class="mods-head">
         <div>
           <div class="seg big">
-            <button data-mview="installed" class="${mrView === 'installed' ? 'active' : ''}">Instalados (${data.installed.length})</button>
-            <button data-mview="browse" class="${mrView === 'browse' ? 'active' : ''}">${icon('search')} Procurar ${noun}</button>
+            ${vanilla ? '' : `<button data-mview="installed" class="${mrView === 'installed' ? 'active' : ''}">Instalados (${data.installed.length})</button>
+            <button data-mview="browse" class="${mrView === 'browse' ? 'active' : ''}">${icon('search')} Procurar ${noun}</button>`}
+            ${plugins ? '' : `<button data-mview="modpacks" class="${mrView === 'modpacks' ? 'active' : ''}">${icon('archive')} Modpacks</button>`}
           </div>
-          <div class="hint" style="margin-top:6px">${plugins ? 'Plugins' : 'Mods'} para ${esc(data.loaders[0])}${data.gameVersion ? ` ${esc(data.gameVersion)}` : ''} · pasta <code>${esc(data.folder)}/</code> · fonte: Modrinth</div>
+          <div class="hint" style="margin-top:6px">${vanilla ? 'O Vanilla não usa mods. Instalar um modpack troca o servidor para o loader do pack (Forge, NeoForge ou Fabric), com backup antes.'
+            : `${plugins ? 'Plugins' : 'Mods'} para ${esc(data.loaders[0])}${data.gameVersion ? ` ${esc(data.gameVersion)}` : ''} · pasta <code>${esc(data.folder)}/</code>`}${data.modpack ? ` · modpack: <b>${esc(data.modpack.name)} ${esc(data.modpack.version)}</b>` : ''}</div>
         </div>
-        <div class="page-actions">
+        ${vanilla || mrView === 'modpacks' ? '' : `<div class="page-actions">
           <button id="checkUpd">${icon('restart')} Verificar atualizações</button>
           ${updCount ? `<button class="primary" id="updAll">${icon('download')} Atualizar ${updCount}</button>` : ''}
           <button id="uploadJar">${icon('upload')} Enviar .jar</button>
           <input type="file" id="jarInput" accept=".jar" multiple hidden>
-        </div>
+        </div>`}
       </div>
-      <div class="notice">Instalar, remover ou ativar ${noun} só vale depois de <b>reiniciar o servidor</b>.</div>
+      ${vanilla || mrView === 'modpacks' ? '' : `<div class="notice">Instalar, remover ou ativar ${noun} só vale depois de <b>reiniciar o servidor</b>.</div>`}
       <div id="mrBody"></div>
     </div>`;
   const reload = () => act(renderMods)(body, d);
-  $$('[data-mview]', body).forEach(b => b.addEventListener('click', () => { mrView = b.dataset.mview; reload(); }));
+  watchJob(body, d, data.job);
+  $$('[data-mview]', body).forEach(b => b.addEventListener('click', () => { mrView = b.dataset.mview; mrSearch.forId = null; reload(); }));
+  const box = $('#mrBody');
+  if (mrView === 'modpacks') return renderModpacks(box, d, data, reload);
   $('#checkUpd').addEventListener('click', act(async e => {
     e.target.disabled = true;
     const list = await api('GET', instApi(d.id, '/mods/updates'));
@@ -88,7 +107,6 @@ function renderModrinth(body, d, data) {
     mrView = 'installed';
     reload();
   }));
-  const box = $('#mrBody');
   if (mrView === 'installed') renderInstalled(box, d, data, updates, reload);
   else renderBrowse(box, d, data, installedIds, reload);
 }
@@ -102,8 +120,8 @@ function renderInstalled(box, d, data, updates, reload) {
     <div class="mod-row ${m.enabled ? '' : 'off'}" data-file="${esc(m.file)}">
       ${modIcon(m.icon)}
       <div class="mod-text">
-        <strong>${m.slug ? `<a href="https://modrinth.com/project/${esc(m.slug)}" target="_blank" rel="noopener">${esc(m.title)}</a>` : esc(m.title)}</strong>
-        <span class="muted small">${m.version ? `${esc(m.version)} · ` : ''}${esc(m.file)} · ${fmtBytes(m.size)}${m.projectId ? '' : ' · enviado manualmente'}</span>
+        <strong>${m.slug ? `<a href="https://modrinth.com/project/${esc(m.slug)}" target="_blank" rel="noopener">${esc(m.title)}</a>` : m.url ? `<a href="${esc(m.url)}" target="_blank" rel="noopener">${esc(m.title)}</a>` : esc(m.title)}</strong>
+        <span class="muted small">${m.version ? `${esc(m.version)} · ` : ''}${esc(m.file)} · ${fmtBytes(m.size)}${m.projectId ? '' : m.source === 'curseforge' ? ' · CurseForge' : data.modpack ? ' · do modpack' : ' · enviado manualmente'}</span>
       </div>
       ${updates?.[m.file] ? `<button class="small primary" data-act="update" title="Atualizar para ${esc(updates[m.file].version)}">${icon('download')} ${esc(updates[m.file].version)}</button>` : ''}
       <label class="switch" title="${m.enabled ? 'Desativar' : 'Ativar'}"><input type="checkbox" data-act="toggle" ${m.enabled ? 'checked' : ''}><span></span></label>
@@ -127,39 +145,111 @@ function renderInstalled(box, d, data, updates, reload) {
   })));
 }
 
-function renderBrowse(box, d, data, installedIds, reload) {
+// Search grid shared by mods and modpacks. `endpoint` returns { hits, total }; `button(hit)` renders the action.
+function searchGrid(box, d, { key, placeholder, endpoint, button, onButton, reload, data }) {
   box.innerHTML = `
-    <form class="mods-search" id="mrForm"><input name="q" value="${esc(mrSearch.q)}" placeholder="Buscar no Modrinth (vazio = mais populares)…" autocomplete="off"><button class="primary">${icon('search')} Buscar</button></form>
+    <form class="mods-search" id="mrForm">${sourceSeg(data, mrSource)}<input name="q" value="${esc(mrSearch.q)}" placeholder="${esc(placeholder)}" autocomplete="off"><button class="primary">${icon('search')} Buscar</button></form>
     <div class="mod-grid" id="mrHits"></div>
     <div style="text-align:center;margin-top:14px"><button id="mrMore" hidden>Carregar mais</button></div>`;
+  $$('[data-src]', box).forEach(b => b.addEventListener('click', () => { mrSource = b.dataset.src; mrSearch.forId = null; reload(); }));
+  if (mrSource === 'curseforge' && !data.curseforge.hasKey) { $('#mrHits').outerHTML = needKey(); return; }
   const draw = () => {
     $('#mrHits').innerHTML = mrSearch.hits.map(h => `
       <div class="mod-card">
-        <div class="mod-card-head">${modIcon(h.icon)}<div class="mod-text"><strong><a href="https://modrinth.com/project/${esc(h.slug)}" target="_blank" rel="noopener">${esc(h.title)}</a></strong><span class="muted small">por ${esc(h.author)} · ${icon('download')} ${fmtCount(h.downloads)}</span></div></div>
+        <div class="mod-card-head">${modIcon(h.icon)}<div class="mod-text"><strong><a href="${esc(h.url || `https://modrinth.com/project/${h.slug}`)}" target="_blank" rel="noopener">${esc(h.title)}</a></strong><span class="muted small">por ${esc(h.author)} · ${icon('download')} ${fmtCount(h.downloads)}</span></div></div>
         <p>${esc(h.description)}</p>
-        ${installedIds.has(h.id) ? '<button class="small" disabled>Instalado</button>' : `<button class="small primary" data-install="${esc(h.id)}">${icon('plus')} Instalar</button>`}
-      </div>`).join('') || '<p class="muted">Nada encontrado para esta versão.</p>';
+        ${button(h)}
+      </div>`).join('') || '<p class="muted">Nada encontrado.</p>';
     $('#mrMore').hidden = mrSearch.hits.length >= mrSearch.total;
-    $$('[data-install]', box).forEach(b => b.addEventListener('click', act(async () => {
-      b.disabled = true;
-      b.textContent = 'Instalando…';
-      try {
-        const r = await api('POST', instApi(d.id, '/mods/install'), { projectId: b.dataset.install });
-        toast(`Instalado: ${r.added.join(', ')}`, 'ok', 7000);
-        installedIds.add(b.dataset.install);
-        b.textContent = 'Instalado';
-      } catch (e) { b.disabled = false; b.innerHTML = `${icon('plus')} Instalar`; throw e; }
-    })));
+    $$('[data-pick]', box).forEach(b => b.addEventListener('click', act(() => onButton(b, mrSearch.hits.find(h => h.id === b.dataset.pick)))));
   };
   const run = act(async (more = false) => {
     const offset = more ? mrSearch.hits.length : 0;
-    const r = await api('GET', instApi(d.id, `/mods/search?q=${encodeURIComponent(mrSearch.q)}&offset=${offset}`));
+    const r = await api('GET', instApi(d.id, `${endpoint}?source=${mrSource}&q=${encodeURIComponent(mrSearch.q)}&offset=${offset}`));
     mrSearch = { ...mrSearch, hits: more ? [...mrSearch.hits, ...r.hits] : r.hits, total: r.total };
     draw();
   });
   $('#mrForm').addEventListener('submit', e => { e.preventDefault(); mrSearch.q = e.target.q.value.trim(); run(); });
   $('#mrMore').addEventListener('click', () => run(true));
-  if (mrSearch.forId !== d.id) { mrSearch = { q: '', hits: [], total: 0, forId: d.id }; run(); } else draw();
+  const forId = `${d.id}|${key}|${mrSource}`;
+  if (mrSearch.forId !== forId) { mrSearch = { q: '', hits: [], total: 0, forId }; run(); } else draw();
+}
+
+function renderBrowse(box, d, data, installedIds, reload) {
+  const plugins = data.type === 'plugins';
+  searchGrid(box, d, {
+    key: 'mods', data, reload, endpoint: '/mods/search',
+    placeholder: `Buscar ${plugins ? 'plugins' : 'mods'} no ${SOURCES[mrSource]} (vazio = mais populares)…`,
+    button: h => (installedIds.has(mrSource === 'curseforge' ? `cf:${h.id}` : h.id)
+      ? '<button class="small" disabled>Instalado</button>'
+      : `<button class="small primary" data-pick="${esc(h.id)}">${icon('plus')} Instalar</button>`),
+    onButton: async b => {
+      b.disabled = true;
+      b.textContent = 'Instalando…';
+      try {
+        const r = await api('POST', instApi(d.id, `/mods/install?source=${mrSource}`), { projectId: b.dataset.pick });
+        toast(`Instalado: ${r.added.join(', ')}`, 'ok', 7000);
+        installedIds.add(mrSource === 'curseforge' ? `cf:${b.dataset.pick}` : b.dataset.pick);
+        b.textContent = 'Instalado';
+      } catch (e) { b.disabled = false; b.innerHTML = `${icon('plus')} Instalar`; throw e; }
+    },
+  });
+}
+
+// ---------- modpacks ----------
+const LOADER_LABEL = { forge: 'Forge', neoforge: 'NeoForge', fabric: 'Fabric', quilt: 'Quilt' };
+
+function renderModpacks(box, d, data, reload) {
+  const current = data.modpack;
+  box.innerHTML = `
+    ${current ? `<div class="card modpack-current">
+      ${modIcon(current.icon)}
+      <div class="mod-text"><strong>${current.url ? `<a href="${esc(current.url)}" target="_blank" rel="noopener">${esc(current.name)}</a>` : esc(current.name)}</strong>
+        <span class="muted small">Versão instalada: ${esc(current.version)} · ${SOURCES[current.source]}</span></div>
+      <span id="packUpd"><button class="small" id="packCheck">${icon('restart')} Verificar atualização</button></span>
+    </div>` : ''}
+    <div class="notice warn">Instalar um modpack <b>substitui a pasta mods/</b> e troca o loader e a versão do Minecraft para os do pack. Antes disso o painel faz um backup completo; o mundo é mantido.</div>
+    <div id="packSearch"></div>`;
+  $('#packCheck')?.addEventListener('click', act(async e => {
+    e.target.disabled = true;
+    const { next } = await api('GET', instApi(d.id, `/modpacks/update?source=${current.source}`));
+    $('#packUpd').innerHTML = next
+      ? `<button class="small primary" id="packUpdate">${icon('download')} Atualizar para ${esc(next.name)}</button>`
+      : '<span class="muted small">Está na versão mais recente.</span>';
+    $('#packUpdate')?.addEventListener('click', act(() => confirmPack(d, { source: current.source, id: current.projectId, title: current.name }, next, reload)));
+  }));
+  searchGrid($('#packSearch'), d, {
+    key: 'packs', data, reload, endpoint: '/modpacks/search',
+    placeholder: `Buscar modpacks no ${SOURCES[mrSource]} (vazio = mais populares)…`,
+    button: h => `<button class="small primary" data-pick="${esc(h.id)}">${icon('download')} Instalar modpack</button>`,
+    onButton: (b, hit) => choosePackVersion(d, { ...hit, source: mrSource }, reload),
+  });
+}
+
+async function choosePackVersion(d, pack, reload) {
+  const list = await api('GET', instApi(d.id, `/modpacks/versions?source=${pack.source}&project=${encodeURIComponent(pack.id)}`));
+  const usable = list.filter(v => v.loader !== 'quilt');
+  if (!usable.length) throw new Error('Este modpack não tem versões que o painel consiga instalar');
+  const { el, close } = openModal(`
+    <div class="modal-head"><h2>${esc(pack.title)}</h2><button class="icon-btn" data-close aria-label="Fechar">✕</button></div>
+    <label>Versão do modpack
+      <select id="packVer">${usable.map(v => `<option value="${esc(v.id)}">${esc(v.name)}${v.gameVersion ? ` · MC ${esc(v.gameVersion)}` : ''}${v.loader ? ` · ${esc(LOADER_LABEL[v.loader] || v.loader)}` : ''}${v.serverPack ? ' · server pack' : ''}</option>`).join('')}</select>
+    </label>
+    <p class="hint">A mais recente vem primeiro. "server pack" = o autor publicou uma versão própria para servidor (mais confiável).</p>
+    <div class="modal-actions"><button data-close>Cancelar</button><button class="primary" id="packGo">Continuar</button></div>`);
+  $('#packGo', el).addEventListener('click', act(async () => {
+    const v = usable.find(x => x.id === $('#packVer', el).value);
+    close();
+    await confirmPack(d, pack, v, reload);
+  }));
+}
+
+async function confirmPack(d, pack, version, reload) {
+  const ok = await confirmDialog(`Instalar ${pack.title} (${version.name})? O servidor vai virar ${LOADER_LABEL[version.loader] || 'o loader do pack'}${version.gameVersion ? ` ${version.gameVersion}` : ''}, a pasta mods/ será substituída e um backup completo é feito antes. Pode levar vários minutos.`, { okText: 'Instalar modpack' });
+  if (!ok) return;
+  await api('POST', instApi(d.id, `/modpacks/install?source=${pack.source}`), { projectId: pack.id, versionId: version.id, name: pack.title, versionName: version.name });
+  toast('Instalando o modpack. O progresso aparece na aba Console.', 'ok', 8000);
+  reload();
 }
 
 // ---------- Steam Workshop (Project Zomboid) ----------

@@ -68,8 +68,8 @@ Busque entre mais de 110 jogos, ajuste nome, senha, portas e jogadores, e escolh
 
 ![Criar servidor](docs/screenshots/create.png)
 
-### Mods e plugins
-No **Minecraft** (Fabric, Forge, NeoForge, Paper, Purpur e Velocity), busque no Modrinth já filtrado pela versão do servidor e instale com um clique; as dependências vêm junto. No **Project Zomboid**, procure na Oficina Steam, instale itens ou coleções inteiras e o painel preenche `WorkshopItems=`, `Mods=` e `Map=` sozinho.
+### Mods, plugins e modpacks
+No **Minecraft** (Fabric, Forge, NeoForge, Paper, Purpur e Velocity), busque no **Modrinth** ou no **CurseForge** já filtrado pela versão do servidor e instale com um clique; as dependências vêm junto. Na visão **Modpacks**, escolha um modpack do Modrinth ou do CurseForge e o painel monta o servidor inteiro: troca para o loader e a versão do pack, baixa os mods e copia as configurações (usa o server pack oficial quando existe), com backup completo antes. No **Project Zomboid**, procure na Oficina Steam, instale itens ou coleções inteiras e o painel preenche `WorkshopItems=`, `Mods=` e `Map=` sozinho.
 
 ![Mods](docs/screenshots/mods.png)
 
@@ -140,7 +140,9 @@ O Java é baixado automaticamente na versão certa para cada versão do Minecraf
 <details>
 <summary><b>Mods</b></summary>
 
-- **Minecraft** (Fabric, Forge, NeoForge, Paper, Purpur, Velocity): busca no Modrinth filtrada pela versão do servidor, instalação com um clique (as dependências vêm junto), ativar/desativar, remover e atualizar. Jars enviados à mão também são reconhecidos.
+- **Minecraft** (Fabric, Forge, NeoForge, Paper, Purpur, Velocity): busca no Modrinth e no CurseForge (Fabric, Forge e NeoForge) filtrada pela versão do servidor, instalação com um clique (as dependências vêm junto), ativar/desativar, remover e atualizar. Jars enviados à mão também são reconhecidos.
+- **Modpacks** do Modrinth (`.mrpack`) e do CurseForge, inclusive em servidores Vanilla: o painel troca para o loader e a versão exata do pack, baixa os mods de servidor, copia as configurações e avisa quando sai versão nova do pack. Modpacks de Quilt ainda não são suportados.
+- **Chave do CurseForge:** o CurseForge exige uma chave de API pessoal e gratuita ([console.curseforge.com](https://console.curseforge.com)), que você cola em Configurações → CurseForge. Mods cujo autor proíbe download por programas mostram o link para baixar no site.
 - **Project Zomboid:** procure mods da Oficina Steam pelo nome (ou veja os mais inscritos e em alta), filtre por Build e clique em Instalar; vários cliques entram numa fila. Também dá para colar links de itens ou coleções inteiras. O painel baixa os itens, lê os Mod IDs e preenche `WorkshopItems=`, `Mods=` (no formato do Build 42) e `Map=` sozinho. Dá para ativar/desativar cada mod, mudar a ordem de carregamento e ver avisos de dependências faltando ou de mods feitos para outro Build.
 
 </details>

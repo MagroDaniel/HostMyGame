@@ -45,6 +45,8 @@ const q = v => encodeURIComponent(JSON.stringify(v));
 
 export function info(inst) {
   const t = TARGETS[inst.template.flavor];
+  // Vanilla has no mod folder; its Mods tab only offers modpacks.
+  if (!t) return { type: 'none', folder: null, loaders: [], gameVersion: inst.cfg.installed?.version || null };
   return { type: t.kind, folder: t.folder, loaders: t.loaders, gameVersion: t.anyVersion ? null : inst.cfg.installed?.version || null };
 }
 
@@ -96,6 +98,7 @@ function jarFiles(dir) {
 
 export async function listInstalled(inst) {
   const t = TARGETS[inst.template.flavor];
+  if (!t) return [];
   const dir = path.join(inst.dir, t.folder);
   const files = jarFiles(dir);
   if (!files.length) return [];

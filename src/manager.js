@@ -168,7 +168,7 @@ export function createInstance(input) {
 export const MC_JAVA = ['vanilla', 'paper', 'purpur', 'fabric', 'forge', 'neoforge'];
 const MODS_DIR = { fabric: 'mods', forge: 'mods', neoforge: 'mods', paper: 'plugins', purpur: 'plugins' };
 // Loader files that the new install recreates; worlds, configs, mods/ and plugins/ stay.
-const LOADER_FILES = ['server.jar', 'libraries', 'versions', 'cache', '.fabric', 'run.bat', 'run.sh', 'user_jvm_args.txt', 'installer.jar', 'installer.jar.log'];
+export const LOADER_FILES = ['server.jar', 'libraries', 'versions', 'cache', '.fabric', 'run.bat', 'run.sh', 'user_jvm_args.txt', 'installer.jar', 'installer.jar.log'];
 
 export function switchMinecraft(inst, { templateId, version }) {
   const from = inst.template;

@@ -102,10 +102,14 @@ export async function installMinecraft(inst, log) {
     return { version: base.id, requiredJava };
   }
 
+  // A pinned loader version (set by modpacks, or by hand) wins over the recommended one.
+  const pinned = String(s.loaderVersion || '').trim();
+  if (pinned && !/^[\w.+-]{1,40}$/.test(pinned)) throw new Error('Versão do loader inválida');
+
   if (flavor === 'fabric') {
     const loaders = await fetchJson('https://meta.fabricmc.net/v2/versions/loader');
     const installers = await fetchJson('https://meta.fabricmc.net/v2/versions/installer');
-    const loader = (loaders.find(l => l.stable) || loaders[0]).version;
+    const loader = pinned || (loaders.find(l => l.stable) || loaders[0]).version;
     const installer = (installers.find(i => i.stable) || installers[0]).version;
     log(`Baixando Fabric ${loader} para Minecraft ${base.id}...`);
     await download(`https://meta.fabricmc.net/v2/versions/loader/${base.id}/${loader}/${installer}/server/jar`, jar);
@@ -116,8 +120,11 @@ export async function installMinecraft(inst, log) {
   // Forge and NeoForge ship an installer that must be run with Java.
   let installerUrl, loaderVersion;
   if (flavor === 'forge') {
-    const promos = (await fetchJson('https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json')).promos;
-    loaderVersion = promos[`${base.id}-recommended`] || promos[`${base.id}-latest`];
+    if (pinned) loaderVersion = pinned.replace(new RegExp(`^${base.id.replace(/\./g, '\\.')}-`), '');
+    else {
+      const promos = (await fetchJson('https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json')).promos;
+      loaderVersion = promos[`${base.id}-recommended`] || promos[`${base.id}-latest`];
+    }
     if (!loaderVersion) throw new Error(`Não há Forge para o Minecraft ${base.id}`);
     const full = `${base.id}-${loaderVersion}`;
     installerUrl = `https://maven.minecraftforge.net/net/minecraftforge/forge/${full}/forge-${full}-installer.jar`;
@@ -127,7 +134,7 @@ export async function installMinecraft(inst, log) {
     const [, minor, patch = '0'] = base.id.split('.');
     const prefix = base.id.startsWith('1.') ? `${minor}.${patch}.` : `${base.id}.`;
     const matching = all.filter(v => v.startsWith(prefix) && !v.includes('craftmine'));
-    loaderVersion = matching.filter(v => !v.includes('beta')).at(-1) || matching.at(-1);
+    loaderVersion = pinned || matching.filter(v => !v.includes('beta')).at(-1) || matching.at(-1);
     if (!loaderVersion) throw new Error(`Não há NeoForge para o Minecraft ${base.id}`);
     installerUrl = `https://maven.neoforged.net/releases/net/neoforged/neoforge/${loaderVersion}/neoforge-${loaderVersion}-installer.jar`;
   }

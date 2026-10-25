@@ -229,6 +229,19 @@ export async function renderSettings() {
 
       <div class="card" id="panelUpdateCard">${panelUpdateCard(upd)}</div>
 
+      <form class="card form" id="cfForm">
+        <h3>CurseForge</h3>
+        <p class="muted small">Necessário só para mods e modpacks do CurseForge no Minecraft (os do Modrinth funcionam sem nada). A chave é gratuita e pessoal:</p>
+        <ol class="small cf-steps">
+          <li>Entre em <a href="https://console.curseforge.com" target="_blank" rel="noopener">console.curseforge.com</a> com uma conta CurseForge ou Google.</li>
+          <li>Abra <b>API Keys</b> e copie a sua chave (se pedir, crie uma organização com qualquer nome).</li>
+          <li>Cole abaixo e salve. Ela fica só neste PC.</li>
+        </ol>
+        <p>${panel.curseforgeKey ? '<span class="badge-ok">Chave configurada</span>' : '<span class="muted small">Nenhuma chave configurada.</span>'}</p>
+        <label>Chave da API do CurseForge<input name="key" type="password" autocomplete="off" spellcheck="false" placeholder="${panel.curseforgeKey ? 'Cole uma nova chave para trocar' : '$2a$10$...'}"></label>
+        <div class="row-gap"><button class="primary">Salvar chave</button>${panel.curseforgeKey ? '<button type="button" id="cfRemove">Remover chave</button>' : ''}</div>
+      </form>
+
       <div class="card">
         <h3>Atualizações dos servidores</h3>
         <p class="muted small">O painel verifica novas versões a cada 30 minutos. Última verificação: <span id="lastCheck">${fmtDate(panel.lastUpdateCheck)}</span></p>
@@ -276,6 +289,22 @@ export async function renderSettings() {
   }));
   $('#steamLogout')?.addEventListener('click', act(async () => { await api('POST', '/api/steam/logout'); renderSettings(); }));
   wirePanelUpdateCard();
+  $('#cfForm').addEventListener('submit', act(async e => {
+    e.preventDefault();
+    const key = e.target.key.value.trim();
+    if (!key) throw new Error('Cole a chave da API do CurseForge');
+    const btn = e.target.querySelector('button.primary');
+    btn.disabled = true;
+    btn.textContent = 'Testando a chave…';
+    try { await api('PUT', '/api/panel/curseforge', { key }); } finally { btn.disabled = false; btn.textContent = 'Salvar chave'; }
+    toast('Chave do CurseForge salva e testada', 'ok');
+    renderSettings();
+  }));
+  $('#cfRemove')?.addEventListener('click', act(async () => {
+    if (!await confirmDialog('Remover a chave do CurseForge? Mods já instalados continuam no servidor.', { okText: 'Remover', danger: true })) return;
+    await api('PUT', '/api/panel/curseforge', { key: '' });
+    renderSettings();
+  }));
   $('#checkUpdates').addEventListener('click', act(async e => {
     e.target.disabled = true;
     e.target.textContent = 'Verificando…';

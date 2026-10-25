@@ -151,7 +151,13 @@ api.get('/system', (req, res) => res.json({ ...systemInfo(), ...systemUsage() })
 
 api.get('/panel', admin, (req, res) => res.json({
   host: db.host, port: db.port, instancesDir: instancesRoot(), steamUser: db.steamUser, version: VERSION,
-  lastUpdateCheck: lastUpdateCheck(), system: systemInfo(),
+  lastUpdateCheck: lastUpdateCheck(), system: systemInfo(), curseforgeKey: mods.curseforge.hasKey(),
+}));
+// The key is checked against the API before saving and never sent back to the browser.
+api.put('/panel/curseforge', admin, h(async (req, res) => {
+  await mods.curseforge.setKey(req.body.key);
+  log(req, req.body.key ? 'configurou a chave do CurseForge' : 'removeu a chave do CurseForge');
+  res.json({ ok: true, configured: mods.curseforge.hasKey() });
 }));
 api.patch('/panel', admin, (req, res) => {
   const { host, port, instancesDir } = req.body;
@@ -461,7 +467,16 @@ function needMods(kind) {
 api.get('/instances/:id/mods', mperm, h(async (req, res) => {
   const inst = req.inst;
   const kind = mods.modKind(inst);
-  if (kind === 'modrinth') return res.json({ kind, ...mods.modrinth.info(inst), installed: await mods.modrinth.listInstalled(inst), job: mods.jobStatus(inst) });
+  if (kind === 'modrinth') {
+    const job = mods.jobStatus(inst);
+    if (!job?.running) mods.clearJobError(inst);
+    return res.json({
+      kind, ...mods.modrinth.info(inst), job,
+      installed: mods.curseforge.annotate(inst, await mods.modrinth.listInstalled(inst)),
+      curseforge: { available: mods.curseforge.supportsCurseForge(inst), hasKey: mods.curseforge.hasKey() },
+      modpack: inst.cfg.modpack || null,
+    });
+  }
   if (kind === 'workshop') {
     const job = mods.jobStatus(inst);
     if (!job?.running) mods.clearJobError(inst); // show a failure once
@@ -469,27 +484,54 @@ api.get('/instances/:id/mods', mperm, h(async (req, res) => {
   }
   res.json({ kind: null });
 }));
-// Minecraft (Modrinth)
+// Minecraft (Modrinth and CurseForge; ?source=curseforge picks CurseForge)
 const mr = [mperm, needMods('modrinth')];
-api.get('/instances/:id/mods/search', mr, h(async (req, res) => res.json(await mods.modrinth.search(req.inst, String(req.query.q || ''), req.query.offset))));
-api.get('/instances/:id/mods/updates', mr, h(async (req, res) => res.json(await mods.modrinth.checkUpdates(req.inst))));
+const fromCf = req => (req.query.source || req.body?.source) === 'curseforge';
+api.get('/instances/:id/mods/search', mr, h(async (req, res) => {
+  const q = String(req.query.q || '');
+  res.json(fromCf(req) ? await mods.curseforge.search(req.inst, q, req.query.offset) : await mods.modrinth.search(req.inst, q, req.query.offset));
+}));
+api.get('/instances/:id/mods/updates', mr, h(async (req, res) => {
+  const [a, b] = await Promise.all([mods.modrinth.checkUpdates(req.inst), mods.curseforge.checkUpdates(req.inst)]);
+  res.json({ ...a, ...b });
+}));
 api.post('/instances/:id/mods/install', mr, h(async (req, res) => {
-  const added = await mods.modrinth.install(req.inst, String(req.body.projectId || ''), line => req.inst.print(line, 'panel'));
-  log(req, 'instalou mod', req.inst.cfg.name, added.join(', '));
+  const print = line => req.inst.print(line, 'panel');
+  const id = String(req.body.projectId || '');
+  const added = fromCf(req) ? await mods.curseforge.install(req.inst, id, print) : await mods.modrinth.install(req.inst, id, print);
+  log(req, 'instalou mod', req.inst.cfg.name, `${added.join(', ')}${fromCf(req) ? ' (CurseForge)' : ''}`);
   res.json({ added });
 }));
+// Modpacks
+api.get('/instances/:id/modpacks/search', mr, h(async (req, res) => res.json(await mods.modpacks.search(fromCf(req) ? 'curseforge' : 'modrinth', String(req.query.q || ''), req.query.offset))));
+api.get('/instances/:id/modpacks/versions', mr, h(async (req, res) => res.json(await mods.modpacks.versions(fromCf(req) ? 'curseforge' : 'modrinth', String(req.query.project || '')))));
+api.get('/instances/:id/modpacks/update', mr, h(async (req, res) => res.json({ next: await mods.modpacks.checkUpdate(req.inst) })));
+api.post('/instances/:id/modpacks/install', [mr, perm('update')], (req, res) => {
+  const inst = req.inst;
+  if (inst.busy) throw httpError(409, 'Pare o servidor antes de instalar um modpack');
+  const pick = { source: fromCf(req) ? 'curseforge' : 'modrinth', projectId: String(req.body.projectId || ''), versionId: String(req.body.versionId || '') };
+  if (!pick.projectId || !pick.versionId) throw httpError(400, 'Escolha o modpack e a versão');
+  log(req, 'instalou modpack', inst.cfg.name, `${req.body.name || pick.projectId} ${req.body.versionName || ''} (${pick.source})`);
+  mods.startJob(inst, `Instalando o modpack ${req.body.name || ''}`.trim(), l => mods.modpacks.install(inst, pick, l));
+  res.json({ ok: true });
+});
 api.post('/instances/:id/mods/toggle', mr, (req, res) => {
   const file = mods.modrinth.toggle(req.inst, req.body.file);
   log(req, file.endsWith('.disabled') ? 'desativou mod' : 'ativou mod', req.inst.cfg.name, req.body.file);
   res.json({ file });
 });
 api.post('/instances/:id/mods/update', mr, h(async (req, res) => {
-  const count = await mods.modrinth.update(req.inst, req.body.file || null, line => req.inst.print(line, 'panel'));
+  const print = line => req.inst.print(line, 'panel');
+  const cfUpdates = await mods.curseforge.checkUpdates(req.inst);
+  const cfFiles = Object.keys(cfUpdates).filter(f => !req.body.file || f === req.body.file);
+  for (const f of cfFiles) await mods.curseforge.updateFile(req.inst, f, cfUpdates[f], print);
+  const count = cfFiles.length + (req.body.file && cfFiles.length ? 0 : await mods.modrinth.update(req.inst, req.body.file || null, print));
   log(req, 'atualizou mods', req.inst.cfg.name, String(count));
   res.json({ count });
 }));
 api.delete('/instances/:id/mods', mr, (req, res) => {
   mods.modrinth.remove(req.inst, req.query.file);
+  mods.curseforge.forget(req.inst, req.query.file);
   log(req, 'removeu mod', req.inst.cfg.name, req.query.file);
   res.json({ ok: true });
 });
