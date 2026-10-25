@@ -164,6 +164,26 @@ export function onSteamLine(entry) {
   out.scrollTop = out.scrollHeight;
 }
 
+// The QR code arrives as rows of 0/1 modules; drawn as SVG on white so phone cameras read it.
+function qrSvg(rows) {
+  const w = rows[0].length, h = rows.length;
+  const cells = rows.flatMap((r, y) => r.map((v, x) => (v ? `M${x} ${y}h1v1h-1z` : ''))).join('');
+  return `<svg viewBox="0 0 ${w} ${h}" shape-rendering="crispEdges" role="img" aria-label="QR code de login da Steam"><rect width="${w}" height="${h}" fill="#fff"/><path d="${cells}" fill="#000"/></svg>
+    <p class="small">Abra o app <strong>Steam</strong> no celular → ícone do escudo (Steam Guard) → <strong>Escanear QR code</strong>.</p>`;
+}
+
+export function onSteamQr(rows) {
+  const box = $('#steamQr');
+  if (!box) return;
+  box.hidden = !rows;
+  box.innerHTML = rows ? qrSvg(rows) : '';
+}
+
+// The login finished (or failed): redraw the card so the connected account and buttons are current.
+export function onSteamDone() {
+  if ($('#steamQrBtn')) renderSettings();
+}
+
 export async function renderSettings() {
   title('Configurações');
   const [panel, steam, upd] = await Promise.all([api('GET', '/api/panel'), api('GET', '/api/steam'), api('GET', '/api/panel/update')]);
@@ -186,16 +206,24 @@ export async function renderSettings() {
 
       <div class="card form">
         <h3>Conta Steam</h3>
-        <p class="muted small">Necessária só para jogos que exigem uma conta que possua o jogo (ex.: DayZ, Arma 3). A senha não é guardada pelo painel; o SteamCMD mantém a sessão.</p>
-        ${steam.user ? `<p>Conectado como <strong>${esc(steam.user)}</strong> <button class="small" id="steamLogout">Desconectar</button></p>` : ''}
-        <form id="steamForm" class="form-grid">
-          <label>Usuário Steam<input name="username" autocomplete="off" value="${esc(steam.user || '')}"></label>
-          <label>Senha<input name="password" type="password" autocomplete="off"></label>
-          <div><button class="primary" ${steam.running ? 'disabled' : ''}>Entrar</button></div>
-        </form>
+        <p class="muted small">Necessária só para jogos que exigem uma conta que possua o jogo (ex.: DayZ, Arma 3). A senha não é guardada pelo painel: a sessão fica salva neste PC.</p>
+        ${steam.user ? `<p class="steam-connected">Conectado como <strong>${esc(steam.user)}</strong> <button class="small" id="steamLogout">Desconectar</button></p>` : ''}
+        <div class="steam-qr-row">
+          <button class="primary" id="steamQrBtn" ${steam.running ? 'disabled' : ''}>Entrar com QR code (app Steam)</button>
+          <button id="steamCancel" ${steam.running ? '' : 'hidden'}>Cancelar</button>
+        </div>
+        <div id="steamQr" class="steam-qr" ${steam.qr ? '' : 'hidden'}>${steam.qr ? qrSvg(steam.qr) : ''}</div>
+        <details ${steam.running && !steam.qr ? 'open' : ''}>
+          <summary class="muted small">Ou entrar com usuário e senha</summary>
+          <form id="steamForm" class="form-grid">
+            <label>Usuário Steam<input name="username" autocomplete="off" value="${esc(steam.user || '')}"></label>
+            <label>Senha<input name="password" type="password" autocomplete="new-password"></label>
+            <div><button ${steam.running ? 'disabled' : ''}>Entrar</button></div>
+          </form>
+        </details>
         <div id="steamSession" ${steam.log.length || steam.running ? '' : 'hidden'}>
           <div class="console small-console" id="steamOut">${steam.log.map(l => `<div>[${fmtTime(l.t)}] ${esc(l.text)}</div>`).join('')}</div>
-          <form id="steamInput" class="cmd"><input name="text" placeholder="Código do Steam Guard" autocomplete="one-time-code"><button>Enviar</button></form>
+          <form id="steamInput" class="cmd"><input name="text" placeholder="Código do Steam Guard (se pedir)" autocomplete="one-time-code"><button>Enviar</button></form>
         </div>
       </div>
 
@@ -225,11 +253,20 @@ export async function renderSettings() {
     const r = await api('PATCH', '/api/panel', { host: f.host.value, port: f.port.value, instancesDir: f.instancesDir.value.trim() });
     toast(r.restartNeeded ? 'Salvo. Reinicie o painel para aplicar acesso/porta.' : 'Salvo', 'ok');
   }));
+  const startSteamLogin = async body => {
+    $('#steamOut').replaceChildren();
+    $('#steamSession').hidden = false;
+    await api('POST', '/api/steam/login', body);
+    $('#steamQrBtn').disabled = true;
+    $('#steamForm button').disabled = true;
+    $('#steamCancel').hidden = false;
+  };
+  $('#steamQrBtn').addEventListener('click', act(() => startSteamLogin({ qr: true })));
+  $('#steamCancel').addEventListener('click', act(() => api('POST', '/api/steam/cancel')));
   $('#steamForm').addEventListener('submit', act(async e => {
     e.preventDefault();
     const f = e.target;
-    $('#steamOut').replaceChildren();
-    await api('POST', '/api/steam/login', { username: f.username.value.trim(), password: f.password.value });
+    await startSteamLogin({ username: f.username.value.trim(), password: f.password.value });
     f.password.value = '';
   }));
   $('#steamInput').addEventListener('submit', act(async e => {

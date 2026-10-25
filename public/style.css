@@ -277,6 +277,11 @@ details.advanced[open] summary { margin-bottom: 12px; }
   font-family: var(--mono); font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-all; color: var(--g200);
 }
 .console .ts { color: var(--g500); }
+.steam-qr-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.steam-qr { display: grid; justify-items: center; gap: 8px; text-align: center; }
+.steam-qr svg { width: 232px; height: 232px; border-radius: 6px; }
+.steam-qr p { margin: 0; color: var(--g200); }
+.steam-connected { margin: 0; }
 .small-console { height: 180px; min-height: 0; margin-top: 12px; border-radius: var(--radius); }
 .console .src-panel { color: #93c5fd; }
 .console .src-user { color: #86efac; }

@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { TOOLS_DIR, db } from '../store.js';
+import { TOOLS_DIR } from '../store.js';
 import { IS_WIN, download, extract, run, serialized } from '../util.js';
+import { installApp as accountInstall } from './depotdownloader.js';
 
 const DIR = path.join(TOOLS_DIR, 'steamcmd');
 const EXE = path.join(DIR, IS_WIN ? 'steamcmd.exe' : 'steamcmd.sh');
@@ -40,14 +41,22 @@ async function steamcmd(args, { log, onSpawn, isDone }) {
   return code;
 }
 
-const loginArgs = login => (login === 'account'
-  ? (db.steamUser ? ['+login', db.steamUser] : (() => { throw new Error('Este jogo exige uma conta Steam. Faça login em Configurações > Conta Steam.'); })())
-  : ['+login', 'anonymous']);
+// Games that need an account go through DepotDownloader, which keeps the session from the QR or password login.
+export async function installApp(opts) {
+  if (opts.login !== 'account') return installAnonymous(opts);
+  await accountInstall(opts);
+  // DepotDownloader doesn't write Steam's app manifest; a minimal one keeps installedBuild() and update checks working.
+  const build = latestBuild((await appInfo([opts.appId]))[opts.appId], opts.branch);
+  if (build) {
+    fs.mkdirSync(path.join(opts.dir, 'steamapps'), { recursive: true });
+    fs.writeFileSync(path.join(opts.dir, 'steamapps', `appmanifest_${opts.appId}.acf`), `"AppState"\n{\n\t"appid"\t\t"${opts.appId}"\n\t"buildid"\t\t"${build}"\n}\n`);
+  }
+}
 
-export function installApp({ dir, appId, login, branch, betaPassword, log, onSpawn }) {
+function installAnonymous({ dir, appId, branch, betaPassword, log, onSpawn }) {
   return queued(async () => {
     let success = false, failure = null;
-    const args = ['+force_install_dir', dir, ...loginArgs(login), '+app_update', String(appId)];
+    const args = ['+force_install_dir', dir, '+login', 'anonymous', '+app_update', String(appId)];
     if (branch) args.push('-beta', branch);
     if (betaPassword) args.push('-betapassword', betaPassword);
     args.push('validate', '+quit');
@@ -140,9 +149,4 @@ export function installedBuild(dir, appId) {
   const manifest = path.join(dir, 'steamapps', `appmanifest_${appId}.acf`);
   if (!fs.existsSync(manifest)) return null;
   return fs.readFileSync(manifest, 'utf8').match(/"buildid"\s+"(\d+)"/)?.[1] ?? null;
-}
-
-// ---- interactive login (for games that need an account; handles Steam Guard prompts) ----
-export function loginSession(username, password, { log, onSpawn }) {
-  return queued(() => steamcmd(['+login', username, password, '+quit'], { log, onSpawn }));
 }

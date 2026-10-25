@@ -99,7 +99,7 @@ Lista das portas de cada servidor, aviso de conflito, liberação no Firewall do
 ![Rede](docs/screenshots/network.png)
 
 ### Configurações e atualizações do painel
-Endereço e porta do painel, pasta padrão dos servidores, conta Steam (com código do Steam Guard) e o card de atualização do próprio painel.
+Endereço e porta do painel, pasta padrão dos servidores, conta Steam (com login por QR code do app Steam) e o card de atualização do próprio painel.
 
 ![Configurações](docs/screenshots/settings.png)
 
@@ -161,7 +161,7 @@ O Java é baixado automaticamente na versão certa para cada versão do Minecraf
 <summary><b>Painel</b></summary>
 
 - **Busca rápida** de servidores com `Ctrl+K`.
-- **Conta Steam** para jogos que exigem login, com suporte ao código do Steam Guard.
+- **Conta Steam** para jogos que exigem login (DayZ, Arma 3, ACC e outros): entre **escaneando um QR code com o app Steam** ou com usuário e senha (código do Steam Guard ou aprovação no app). A sessão fica salva no PC, e esses jogos são baixados pelo [DepotDownloader](https://github.com/SteamRE/DepotDownloader).
 - **Acesso pela rede:** por padrão o painel só aceita conexões deste computador; em Configurações dá para liberar para a rede local.
 - **Atualização do próprio painel** pelo GitHub, sempre com a sua confirmação.
 

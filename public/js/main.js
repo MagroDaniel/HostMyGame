@@ -2,7 +2,7 @@ import { $, $$, act, api, badge, esc, findInst, gameArt, icon, isAdmin, openModa
 import { renderInstances, updateInstancesView } from './views/instances.js';
 import { renderInstance, onInstanceConsole, onInstanceStatus } from './views/instance.js';
 import { openCreateDialog } from './views/create.js';
-import { renderActivity, renderAccount, renderSchedules, renderSettings, renderUsers, onSteamLine, showPanelUpdateNotice } from './views/admin.js';
+import { renderActivity, renderAccount, renderSchedules, renderSettings, renderUsers, onSteamDone, onSteamLine, onSteamQr, showPanelUpdateNotice } from './views/admin.js';
 
 const NAV = [
   { view: '', label: 'Servidores', icon: 'server' },
@@ -122,6 +122,8 @@ function connectWs() {
     if (msg.type === 'console') onInstanceConsole(msg.id, msg.entry);
     if (msg.type === 'status') onStatus(msg);
     if (msg.type === 'steam') onSteamLine(msg.entry);
+    if (msg.type === 'steamqr') onSteamQr(msg.qr);
+    if (msg.type === 'steamdone') onSteamDone();
   };
   ws.onclose = () => {
     if (state.ws !== ws) return;

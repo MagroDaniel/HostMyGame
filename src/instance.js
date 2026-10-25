@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { save } from './store.js';
+import { db, save } from './store.js';
 import { IS_WIN, expand, httpError, sleep, splitArgs } from './util.js';
 import { startProcess } from './process.js';
 import { getTemplate } from './catalog.js';
@@ -177,7 +177,7 @@ export class Instance extends EventEmitter {
       let installed = {};
       if (t.provider === 'steamcmd') {
         if (!this.steamAppId) throw httpError(400, 'Informe o Steam App ID em Avançado');
-        this.print(`Instalando App ${this.steamAppId} pelo SteamCMD...`, 'panel');
+        this.print(`Instalando App ${this.steamAppId} ${t.steam?.login === 'account' ? `com a conta Steam ${db.steamUser || '(não conectada)'}` : 'pelo SteamCMD'}...`, 'panel');
         await installApp({
           dir: this.dir, appId: this.steamAppId, login: t.steam?.login, branch: this.cfg.steamBranch,
           betaPassword: this.cfg.steamBetaPassword, log, onSpawn: child => { this.installProc = child; },

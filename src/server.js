@@ -15,7 +15,7 @@ import { openFirewall } from './network.js';
 import { checkUpdates, lastUpdateCheck } from './updates.js';
 import { applyPanelUpdate, checkPanelUpdate, panelUpdateState } from './selfupdate.js';
 import { OVERRIDABLE } from './instance.js';
-import { loginSession } from './providers/steamcmd.js';
+import { login as steamLogin } from './providers/depotdownloader.js';
 import { httpError } from './util.js';
 import * as mods from './mods/index.js';
 import { fixIssue } from './issues.js';
@@ -177,33 +177,45 @@ api.get('/activity', admin, (req, res) => res.json(readActivity({
   limit: Math.min(Number(req.query.limit) || 300, 2000), user: req.query.user || undefined, search: req.query.search || undefined,
 })));
 
-// ---------- Steam account (interactive SteamCMD login, answers Steam Guard prompts) ----------
-const steam = { proc: null, log: [], running: false };
+// ---------- Steam account (DepotDownloader login: QR code or password + Steam Guard) ----------
+const steam = { proc: null, log: [], running: false, qr: null };
+const toAdmins = message => broadcast(message, u => auth.isAdmin(u));
 const steamPrint = text => {
   steam.log.push({ t: Date.now(), text });
   if (steam.log.length > 300) steam.log.shift();
-  broadcast({ type: 'steam', entry: { t: Date.now(), text } }, u => auth.isAdmin(u));
+  toAdmins({ type: 'steam', entry: { t: Date.now(), text } });
 };
+const setSteamQr = qr => { steam.qr = qr; toAdmins({ type: 'steamqr', qr }); };
 
-api.get('/steam', admin, (req, res) => res.json({ user: db.steamUser, running: steam.running, log: steam.log }));
+api.get('/steam', admin, (req, res) => res.json({ user: db.steamUser, running: steam.running, log: steam.log, qr: steam.qr }));
 api.post('/steam/login', admin, (req, res) => {
-  const { username, password } = req.body;
-  if (!username || !password) throw httpError(400, 'Informe usuário e senha da Steam');
+  const qr = Boolean(req.body.qr);
+  const username = String(req.body.username || '').trim();
+  const password = String(req.body.password || '');
+  if (!qr && (!username || !password)) throw httpError(400, 'Informe usuário e senha da Steam, ou entre com o QR code');
   if (steam.running) throw httpError(409, 'Já existe um login em andamento');
   steam.running = true;
   steam.log = [];
-  let ok = false;
-  steamPrint(`Entrando como ${username}... Se pedir o código do Steam Guard, digite-o abaixo.`);
-  loginSession(username, password, {
-    onSpawn: child => { steam.proc = child; },
-    log: line => {
-      if (/Waiting for user info\.\.\.OK|Logged in OK/i.test(line)) ok = true;
-      steamPrint(line);
-    },
-  }).then(() => {
-    if (ok) { db.steamUser = username; save(); steamPrint('Login concluído. A sessão fica salva no SteamCMD.'); record(req.user, 'conectou conta Steam', username); }
-    else steamPrint('Login não confirmado. Verifique usuário, senha e o código do Steam Guard.');
-  }).catch(e => steamPrint(`Erro: ${e.message}`)).finally(() => { steam.running = false; steam.proc = null; });
+  setSteamQr(null);
+  steamPrint(qr ? 'Gerando o QR code...' : `Entrando como ${username}... Se a Steam pedir, aprove no app do celular ou digite o código do Steam Guard abaixo.`);
+  steamLogin({
+    username: qr ? null : username, password: qr ? null : password,
+    log: steamPrint, onQr: setSteamQr, onSpawn: child => { steam.proc = child; },
+  }).then(account => {
+    db.steamUser = account;
+    save();
+    steamPrint(`Conectado como ${account}. A sessão fica salva neste PC para os próximos downloads.`);
+    record(req.user, 'conectou conta Steam', account);
+  }).catch(e => steamPrint(`Erro: ${e.message}`)).finally(() => {
+    steam.running = false;
+    steam.proc = null;
+    setSteamQr(null);
+    toAdmins({ type: 'steamdone', user: db.steamUser });
+  });
+  res.json({ ok: true });
+});
+api.post('/steam/cancel', admin, (req, res) => {
+  steam.proc?.kill();
   res.json({ ok: true });
 });
 api.post('/steam/input', admin, (req, res) => {
