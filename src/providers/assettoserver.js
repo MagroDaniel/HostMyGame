@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ROOT } from '../store.js';
+import { ROOT, TOOLS_DIR } from '../store.js';
 import { IS_WIN, copyOver, download, extract, fetchJson } from '../util.js';
 
 const REPO = 'compujuckel/AssettoServer';
@@ -114,8 +114,24 @@ const listSetting = v => String(v || '').split(/[\s,;]+/).map(s => s.trim()).fil
 const ini = sections => Object.entries(sections).map(([name, keys]) => `[${name}]\r\n${Object.entries(keys).map(([k, v]) => `${k}=${v ?? ''}`).join('\r\n')}\r\n`).join('\r\n');
 const yamlString = s => JSON.stringify(String(s ?? ''));
 
+// Steam's game server API looks for steamclient64.dll through the Steam install of the current Windows user.
+// The installed panel runs as a service (SYSTEM), which has none, so the DLLs go next to the server instead.
+const STEAM_DLLS = ['steamclient64.dll', 'tier0_s64.dll', 'vstdlib_s64.dll'];
+function steamClientDlls(inst, log) {
+  if (!IS_WIN || STEAM_DLLS.every(f => fs.existsSync(path.join(inst.dir, f)))) return;
+  const sources = [...steamLibraries().slice(0, 1), path.join(TOOLS_DIR, 'steamcmd')];
+  const from = sources.find(dir => STEAM_DLLS.every(f => fs.existsSync(path.join(dir, f))));
+  if (!from) {
+    log('Atenção: não encontrei o steamclient64.dll (Steam ou SteamCMD). Se o servidor reclamar do Steam, instale a Steam neste PC.');
+    return;
+  }
+  for (const f of STEAM_DLLS) fs.copyFileSync(path.join(from, f), path.join(inst.dir, f));
+  log(`Bibliotecas da Steam copiadas de ${from}.`);
+}
+
 export async function prepareAssettoServer(inst, log) {
   const s = inst.cfg.settings;
+  steamClientDlls(inst, log);
   const content = listContent(s.acPath || '');
   const ac = content.path;
   const track = content.tracks.find(t => t.name === s.track);
