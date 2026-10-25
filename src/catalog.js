@@ -125,7 +125,47 @@ const MINECRAFT = [
 ];
 
 // ---- Other non-Steam games ----
+const AC_PLAYER_CARS = [
+  'srp_bcnr33_wangan', 'srp_toyota_supra_mkiv_interceptor', 'srp_mitsubishi_evo_5_wangan', 'srp_honda_s2000_legendary',
+  'ddm_nissan_skyline_bnr32', 'ddm_nissan_silvia_s15', 'ddm_mazda_rx7_infini_fc3s', 'ddm_toyota_supra_ma70', 'ddm_honda_civic_fd2',
+  'ddm_subaru_22b', 'ddm_toyota_mr2_sw20_shuto', 'ddm_nissan_skyline_hr31_house', 'hsrc_mazda_rx7_aspec', 'hsrc_honda_nsx_ss', 'hsrc_toyota_a80_creek',
+].join(', ');
+const AC_TRAFFIC_CARS = [
+  'traffic_aegis_airport_bus', 'traffic_aegis_daihatsu_copen', 'traffic_aegis_izuzu_npr', 'traffic_aegis_izuzu_npr_box', 'traffic_aegis_mazda_cx3',
+  'traffic_aegis_subaru_levorg', 'traffic_aegis_suzuki_alto_works', 'traffic_aegis_toyota_markii_taxi', 'traffic_aegis_toyota_prius',
+  'traffic_aegis_toyota_vellfire', 'traffic_aegis_ud_quon', 'traffic_audi_a4_jp', 'traffic_isuzu_flatbed', 'traffic_isuzu_hauler',
+  'traffic_isuzu_haulerb', 'traffic_isuzu_npr', 'traffic_isuzu_tanker', 'traffic_nissan_leaf', 'traffic_toyota_camry', 'traffic_toyota_prius',
+  'traffic_toyota_rav4', 'traffic_volvo_v70jp',
+].join(', ');
+
 const OTHER = [
+  {
+    id: 'assettoserver', name: 'Assetto Corsa — Tráfego (AssettoServer)', category: 'Corrida', provider: 'download', source: 'assettoserver',
+    platforms: ['windows'], image: img(244210), prepare: 'assettoserver',
+    description: 'Servidor com trânsito de IA e pontuação por ultrapassagens e cortes, no estilo dos servidores de tráfego. Usa as pistas e os carros do seu Assetto Corsa; os jogadores precisam de CSP e Content Manager.',
+    notes: 'O conteúdo (pista e carros) vem da sua instalação do Assetto Corsa e é copiado antes de cada início. Os jogadores precisam ter a mesma pista e os mesmos carros instalados.',
+    exe: 'AssettoServer.exe', args: '',
+    settings: [
+      S.serverName('Shutoko Traffic'), S.password(), S.adminPassword(), S.maxPlayers(16), S.port(9600),
+      { key: 'httpPort', label: 'Porta HTTP (lista do jogo e script de pontuação)', type: 'port', default: 8091 },
+      { key: 'track', label: 'Pista (pasta em content/tracks)', type: 'text', default: 'shutoko_revival_project_094_ptb1' },
+      { key: 'layout', label: 'Layout da pista (vazio = sem layout)', type: 'text', default: 'main_layout' },
+      { key: 'cars', label: 'Carros dos jogadores (pastas em content/cars, separadas por vírgula)', type: 'text', default: AC_PLAYER_CARS },
+      { key: 'traffic', label: 'Trânsito de IA', type: 'bool', default: true },
+      { key: 'trafficCars', label: 'Carros do trânsito (separados por vírgula)', type: 'text', default: AC_TRAFFIC_CARS },
+      { key: 'trafficDensity', label: 'Densidade do trânsito (%)', type: 'number', default: 100, min: 10, max: 200, hint: '100 = normal. Mais de 100 nem sempre aumenta o trânsito; depende dos jogadores e dos carros.' },
+      { key: 'trafficSpeed', label: 'Velocidade do trânsito (km/h)', type: 'number', default: 90, min: 40, max: 200 },
+      { key: 'twoWay', label: 'Trânsito nos dois sentidos', type: 'bool', default: false },
+      { key: 'scoring', label: 'Pontuação de tráfego (ultrapassagens e cortes)', type: 'bool', default: true },
+      { key: 'timeOfDay', label: 'Horário (8 a 18)', type: 'number', default: 14, min: 8, max: 18 },
+      { key: 'publicList', label: 'Aparecer na lista pública do Assetto Corsa', type: 'bool', default: true },
+      { key: 'description', label: 'Descrição no Content Manager', type: 'text', default: 'Trânsito japonês e pontuação por ultrapassagens. Precisa de CSP.' },
+      { key: 'acPath', label: 'Pasta do Assetto Corsa (vazio = detectar a da Steam)', type: 'text', default: '', advanced: true },
+    ],
+    ports: [{ name: 'Jogo', port: '{{port}}', proto: 'both' }, { name: 'HTTP', port: '{{httpPort}}', proto: 'tcp' }],
+    console: 'stdin', query: { type: 'assettoserver', port: '{{httpPort}}' }, backupPaths: 'cfg',
+    configFiles: ['cfg/server_cfg.ini', 'cfg/entry_list.ini', 'cfg/extra_cfg.yml', 'cfg/csp_extra_options.ini'],
+  },
   {
     id: 'terraria', name: 'Terraria', category: 'Sandbox / Construção', provider: 'download', source: 'terraria',
     platforms: ['windows', 'linux'], image: img(105600), description: 'Servidor dedicado oficial (vanilla).',

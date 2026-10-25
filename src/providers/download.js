@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { IS_WIN, copyOver, download, extract, fetchJson } from '../util.js';
+import { installAssettoServer, latestAssettoServer } from './assettoserver.js';
 
 async function terraria(inst, log) {
   const names = await fetchJson('https://terraria.org/api/get/dedicated-servers-names');
@@ -31,7 +32,7 @@ async function mindustry(inst, log) {
   return { version: release.tag_name, requiredJava: 17 };
 }
 
-const SOURCES = { terraria, mindustry };
+const SOURCES = { terraria, mindustry, assettoserver: installAssettoServer };
 
 export function installDownload(inst, log) {
   const fn = SOURCES[inst.template.source];
@@ -44,6 +45,7 @@ export async function latestDownload(inst) {
     const names = await fetchJson('https://terraria.org/api/get/dedicated-servers-names');
     return { version: names[0].match(/(\d+)/)?.[1] };
   }
+  if (inst.template.source === 'assettoserver') return latestAssettoServer();
   if (inst.template.source === 'mindustry') {
     return { version: (await fetchJson('https://api.github.com/repos/Anuken/Mindustry/releases/latest')).tag_name };
   }

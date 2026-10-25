@@ -113,6 +113,7 @@ Mais de 110 jogos, com App IDs e executáveis da Steam conferidos no SteamCMD.
 | **Sobrevivência** | Valheim, Palworld, Enshrouded, 7 Days to Die, Project Zomboid, Rust, ARK (Evolved e Ascended), Conan Exiles, V Rising, Sons of the Forest, Core Keeper, DayZ e outros |
 | **Tiro** | Counter-Strike 2, Arma 3, Arma Reforger, Squad, Insurgency: Sandstorm e outros |
 | **Source** | Team Fortress 2, Garry's Mod, Left 4 Dead 1 e 2, CS:Source e outros |
+| **Corrida** | Assetto Corsa (servidor oficial ou **AssettoServer com trânsito e pontuação**), Assetto Corsa Competizione e outros |
 | **Fora da Steam** | Terraria e Mindustry |
 | **Qualquer outro** | Qualquer servidor da Steam pelo App ID (o executável é detectado sozinho) ou qualquer programa que você já tenha |
 
@@ -168,6 +169,16 @@ O Java é baixado automaticamente na versão certa para cada versão do Minecraf
 - **Atualização do próprio painel** pelo GitHub, sempre com a sua confirmação.
 
 </details>
+
+## Assetto Corsa com trânsito
+
+O item **"Assetto Corsa — Tráfego (AssettoServer)"** cria um servidor no estilo dos servidores de tráfego:
+
+- **Trânsito de IA** com o [AssettoServer](https://github.com/compujuckel/AssettoServer): densidade, velocidade, mão dupla e quais carros aparecem no trânsito.
+- **Pontuação por ultrapassagens e cortes**, num script do próprio painel que o servidor envia a cada jogador. Ultrapassar carros do trânsito acima de 80 km/h dá pontos multiplicados pelo combo, passar muito perto ("corte") dá bônus e bater zera a corrida. Um placar mostra os 5 melhores do servidor.
+- **Conteúdo do seu Assetto Corsa:** o painel encontra o jogo da Steam e, antes de cada início, copia só o que o servidor precisa (dados da pista, traçado de IA e `data.acd` dos carros). Já vem configurado com o Shutoko Revival Project (`main_layout`), 15 carros de rua e 22 carros de trânsito japoneses; tudo isso muda na aba Inicialização.
+
+Os jogadores precisam de **CSP** e **Content Manager**, e da mesma pista e dos mesmos carros instalados. Libere a porta do jogo (TCP e UDP) e a porta HTTP no roteador. Use só mapas e carros cuja licença permita servidores; os mapas do No Hesi, por exemplo, proíbem.
 
 ## Atualizações do painel
 

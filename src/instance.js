@@ -13,6 +13,7 @@ import { resolveJava } from './providers/java.js';
 import { appInfo, installApp, installedBuild, windowsLaunch } from './providers/steamcmd.js';
 import { installMinecraft, minecraftLaunchArgs } from './providers/minecraft.js';
 import { installDownload } from './providers/download.js';
+import { prepareAssettoServer } from './providers/assettoserver.js';
 import { detectIssues, listIssues } from './issues.js';
 
 const LOG_LIMIT = 2000;
@@ -238,6 +239,7 @@ export class Instance extends EventEmitter {
       if (!written) this.print(`${this.expand(entry.path)} ainda não existe; as configurações serão aplicadas depois que o jogo criar o arquivo.`, 'panel');
     }
     if (t.prepare === 'pz-wrapper') this.writeZomboidWrapper();
+    if (t.prepare === 'assettoserver') await prepareAssettoServer(this, l => this.print(l, 'panel'));
     const usesJava = (t.provider === 'minecraft' && t.flavor !== 'bedrock') || /\{\{java\}\}/.test(this.effective('exe'));
     if (usesJava) {
       this.javaExe = await resolveJava(this.cfg.settings.javaPath, this.cfg.installed?.requiredJava || t.javaMajor, l => this.print(l, 'panel'));
@@ -476,6 +478,11 @@ export class Instance extends EventEmitter {
       if (type === 'a2s') this.queryInfo = await a2sInfo(port);
       else if (type === 'minecraft') this.queryInfo = await minecraftPing(port);
       else if (type === 'bedrock') this.queryInfo = await bedrockPing(port);
+      else if (type === 'assettoserver') {
+        // AssettoServer's /INFO lists real players only; AI traffic slots aren't counted.
+        const info = await (await fetch(`http://127.0.0.1:${port}/INFO`, { signal: AbortSignal.timeout(3000) })).json();
+        this.queryInfo = { players: info.clients, maxPlayers: this.cfg.settings.maxPlayers, name: info.name };
+      }
       else if (type === 'rcon-palworld' && this.channel?.connected) {
         const reply = await this.channel.send('ShowPlayers');
         const names = reply.split(/\r?\n/).slice(1).map(l => l.split(',')[0]).filter(Boolean);
