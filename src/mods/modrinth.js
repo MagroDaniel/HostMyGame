@@ -133,12 +133,24 @@ export async function install(inst, projectId, log) {
   const t = target(inst);
   fs.mkdirSync(t.dir, { recursive: true });
   const installed = new Set((await listInstalled(inst)).map(m => m.projectId).filter(Boolean));
+  // Mods that came from CurseForge, matched by slug or title, so they aren't downloaded a second time.
+  const norm = s => String(s || '').toLowerCase().replace(/\(.*?\)/g, '').replace(/[^a-z0-9]/g, '');
+  const fromCf = Object.values(inst.cfg.curseforge || {});
+  const cfSlugs = new Set(fromCf.map(r => r.slug).filter(Boolean)), cfTitles = new Set(fromCf.map(r => norm(r.name)));
   const added = [];
   const queue = [projectId];
   while (queue.length) {
     const id = queue.shift();
     if (installed.has(id)) continue;
     installed.add(id);
+    if (fromCf.length) {
+      const p = await mr(`/project/${encodeURIComponent(id)}`);
+      if (p && (cfSlugs.has(p.slug) || cfTitles.has(norm(p.title)))) {
+        if (id === projectId) throw httpError(409, `${p.title} já está instalado neste servidor (pelo CurseForge)`);
+        log(`${p.title} já está instalado (CurseForge); mantendo o que existe.`);
+        continue;
+      }
+    }
     const v = await compatibleVersion(t, id);
     if (!v) {
       if (id === projectId) throw httpError(400, `Não há versão compatível com ${t.loaders[0]} ${t.gameVersion || ''}`.trim());

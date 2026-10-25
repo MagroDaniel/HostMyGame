@@ -21,7 +21,9 @@ const RULES = [
     id: 'java',
     // "class file version 65.0" -> Java 21 (class version - 44)
     match: line => {
-      const m = line.match(/class file version (\d+)(?:\.\d+)?/i) || line.match(/requires (?:at least )?Java (\d+)/i);
+      // Fabric: "requires version 16 or later of 'OpenJDK 64-Bit Server VM' (java)" / "(java) 8 with version 16 or later"
+      const m = line.match(/class file version (\d+)(?:\.\d+)?/i) || line.match(/requires (?:at least )?Java (\d+)/i)
+        || line.match(/requires version (\d+) or later of .*\(java\)/i) || line.match(/\(java\) \d+ with version (\d+) or later/i);
       if (!m) return null;
       const v = Number(m[1]);
       return { java: v > 44 ? v - 44 : v };

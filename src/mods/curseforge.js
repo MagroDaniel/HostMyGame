@@ -3,7 +3,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { db, save } from '../store.js';
-import { download, httpError } from '../util.js';
+import { download, httpError, sleep } from '../util.js';
+import { listInstalled } from './modrinth.js';
 
 const API = 'https://api.curseforge.com/v1';
 const MINECRAFT = 432;
@@ -14,19 +15,30 @@ const LOADERS = Object.keys(LOADER_TYPE);
 export const hasKey = () => Boolean(db.curseforgeKey);
 export const supportsCurseForge = inst => inst.template.provider === 'minecraft' && LOADERS.includes(inst.template.flavor);
 
+// CurseForge's servers don't all learn a key at the same time: for a while after it is created, the same valid
+// key is refused by some of them at random. A refused request is retried a few times before giving up.
+const KEY_RETRIES = 6;
+
 export async function cf(pathAndQuery, body, key = db.curseforgeKey) {
   if (!key) throw httpError(400, 'Configure a chave da API do CurseForge em Configurações do painel');
   let res;
-  try {
-    res = await fetch(API + pathAndQuery, {
-      method: body ? 'POST' : 'GET',
-      headers: { 'x-api-key': key, Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-  } catch (e) {
-    throw httpError(502, `Não foi possível falar com o CurseForge: ${e.message}`);
+  for (let attempt = 1; ; attempt++) {
+    try {
+      res = await fetch(API + pathAndQuery, {
+        method: body ? 'POST' : 'GET',
+        headers: { 'x-api-key': key, Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+    } catch (e) {
+      throw httpError(502, `Não foi possível falar com o CurseForge: ${e.message}`);
+    }
+    if ((res.status !== 403 && res.status !== 401) || attempt >= KEY_RETRIES) break;
+    await res.arrayBuffer();
+    await sleep(250 * attempt);
   }
-  if (res.status === 403 || res.status === 401) throw httpError(400, 'O CurseForge recusou a chave da API. Confira a chave em Configurações do painel.');
+  if (res.status === 403 || res.status === 401) {
+    throw httpError(400, 'O CurseForge recusou a chave da API. Se você acabou de criar a chave, ela pode levar alguns minutos (às vezes horas) para funcionar em todos os servidores do CurseForge; tente de novo mais tarde. Se continuar, confira a chave em Configurações do painel.');
+  }
   if (res.status === 404) return null;
   if (!res.ok) throw httpError(502, `CurseForge respondeu ${res.status}`);
   return res.json();
@@ -102,19 +114,42 @@ export function forget(inst, file) {
   save();
 }
 
+// Mods already in mods/, whatever their source, keyed by project slug and by a normalized title. Most mods use the
+// same slug on CurseForge and Modrinth (fabric-api, balm, cloth-config...), which is how a dependency that came
+// from Modrinth or a modpack is recognized instead of being downloaded a second time.
+const norm = s => String(s || '').toLowerCase().replace(/\(.*?\)/g, '').replace(/[^a-z0-9]/g, '');
+async function presentMods(inst) {
+  const list = annotate(inst, await listInstalled(inst));
+  const slugs = new Set(), titles = new Set(), ids = new Set();
+  for (const m of list) {
+    if (m.slug) slugs.add(m.slug);
+    if (m.cfModId) ids.add(String(m.cfModId));
+    titles.add(norm(m.title));
+  }
+  for (const r of Object.values(records(inst))) { ids.add(String(r.modId)); if (r.slug) slugs.add(r.slug); }
+  return { has: mod => ids.has(String(mod.id)) || slugs.has(mod.slug) || titles.has(norm(mod.name)) };
+}
+
 // Installs a mod plus its required dependencies; returns the file names that were added.
 export async function install(inst, modId, log) {
   const t = target(inst);
   fs.mkdirSync(t.dir, { recursive: true });
   const rec = records(inst);
-  const have = new Set(Object.values(rec).map(r => String(r.modId)));
+  const present = await presentMods(inst);
+  const seen = new Set();
   const added = [];
   const queue = [String(modId)];
   while (queue.length) {
     const id = queue.shift();
-    if (have.has(id)) continue;
-    have.add(id);
-    const [mod, file] = await Promise.all([cf(`/mods/${id}`).then(r => r?.data), compatibleFile(t, id)]);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const mod = (await cf(`/mods/${id}`))?.data;
+    if (mod && present.has(mod)) {
+      if (id === String(modId)) throw httpError(409, `${mod.name} já está instalado neste servidor`);
+      log(`${mod.name} já está instalado; mantendo o que existe.`);
+      continue;
+    }
+    const file = await compatibleFile(t, id);
     if (!file) {
       if (id === String(modId)) throw httpError(400, `Não há versão compatível com ${t.loader} ${t.gameVersion}`);
       log(`Dependência ${mod?.name || id} não tem versão compatível; instale manualmente se o servidor reclamar.`);
@@ -127,7 +162,7 @@ export async function install(inst, modId, log) {
     }
     log(`Baixando ${file.fileName}...`);
     await download(file.downloadUrl, path.join(t.dir, file.fileName), { sha1: sha1Of(file) });
-    rec[file.fileName] = { modId: Number(id), fileId: file.id, name: mod?.name || file.displayName, version: file.displayName, icon: mod?.logo?.thumbnailUrl || null, url: mod?.links?.websiteUrl || null };
+    rec[file.fileName] = { modId: Number(id), fileId: file.id, slug: mod?.slug || null, name: mod?.name || file.displayName, version: file.displayName, icon: mod?.logo?.thumbnailUrl || null, url: mod?.links?.websiteUrl || null };
     save();
     added.push(file.fileName);
     for (const dep of file.dependencies || []) if (dep.relationType === 3) queue.push(String(dep.modId));
