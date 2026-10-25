@@ -65,6 +65,19 @@ app.post('/api/auth/login', h(async (req, res) => {
   res.json({ ok: true });
 }));
 
+app.post('/api/auth/recover/start', (req, res) => {
+  if (auth.needsSetup()) return res.status(400).json({ error: 'O painel ainda não tem contas' });
+  const file = auth.startRecovery();
+  record('(recuperação)', 'pediu código de recuperação de senha', '', req.ip);
+  res.json({ file });
+});
+
+app.post('/api/auth/recover/finish', h(async (req, res) => {
+  const username = await auth.finishRecovery(req.body.username, req.body.code, req.body.password, Boolean(req.body.disableTotp));
+  record(username, req.body.disableTotp ? 'redefiniu a senha e desativou a verificação em duas etapas pela recuperação' : 'redefiniu a senha pela recuperação', '', req.ip);
+  res.json({ ok: true });
+}));
+
 app.post('/api/auth/logout', (req, res) => {
   const user = auth.sessionUser(req);
   if (user) record(user, 'saiu');

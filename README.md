@@ -24,6 +24,8 @@
   <a href="#jogos-suportados">Jogos suportados</a>
   ·
   <a href="#perguntas-frequentes">Perguntas frequentes</a>
+  ·
+  <a href="https://discord.gg/RQBnXJ8E8G"><b>💬 Entrar no Discord</b></a>
 </p>
 
 ![Lista de servidores](docs/screenshots/servers.png)
@@ -149,6 +151,7 @@ O Java é baixado automaticamente na versão certa para cada versão do Minecraf
 - **Usuários:** administradores e usuários com permissões por servidor (console, controle, atualizar, arquivos, backups, agendador e configurações).
 - **Usuários por servidor:** na aba Usuários de cada servidor, o administrador dá acesso e escolhe as permissões de cada pessoa. Cada servidor mostra também a própria atividade recente.
 - **Verificação em duas etapas** (Google Authenticator, Microsoft Authenticator etc.) com códigos de recuperação.
+- **Esqueci minha senha:** recuperação pela tela de login com um código gravado no próprio PC do painel, sem precisar de e-mail.
 - **Chaves de API** para bots e scripts (`Authorization: Bearer hmg_...`), com as mesmas permissões do dono da chave.
 - **Registro de atividades:** quem fez o quê e quando.
 
@@ -186,6 +189,17 @@ Dica: reserve o IP local do PC no DHCP do roteador, para a regra não parar de f
 ## Perguntas frequentes
 
 <details>
+<summary><b>Esqueci minha senha (ou o nome de usuário)</b></summary>
+
+1. Na tela de login, clique em **Esqueci minha senha**.
+2. No computador onde o painel está instalado, abra o arquivo `C:\ProgramData\HostMyGame\RECUPERAR-SENHA.txt` (atalho: Menu Iniciar → Host My Game → Pasta de dados). Ele tem um código e a lista de usuários do painel.
+3. Digite o usuário, o código e a nova senha. Se você também perdeu o celular do autenticador, marque a opção para desativar a verificação em duas etapas.
+
+O código vale por 15 minutos, aceita 5 tentativas e só funciona uma vez. Como ele só aparece no PC do painel, ninguém de fora consegue trocar a sua senha, mesmo que peça um código. Ao trocar a senha, todas as sessões abertas daquele usuário são encerradas. Quem não é administrador também pode pedir para um administrador redefinir a senha em **Usuários**.
+
+</details>
+
+<details>
 <summary><b>O painel não abre em http://localhost:8082</b></summary>
 
 - Confira se o serviço está rodando: abra `services.msc` e procure **Host My Game**. Ele deve estar "Em execução" com inicialização "Automática".
@@ -221,6 +235,10 @@ O Valheim não tem comando de parada pelo console, então o painel encerra o pro
 Pode. A porta padrão é 8082 justamente porque o AMP usa a 8081. Só não deixe os dois rodando servidores na mesma porta de jogo.
 
 </details>
+
+## Comunidade
+
+Quer sugerir um recurso, reportar um bug, tirar uma dúvida ou só conversar com outras pessoas que usam o painel? Entre no [servidor do Discord](https://discord.gg/RQBnXJ8E8G): tem canais para anúncios de versões, sugestões, bugs e ajuda.
 
 ## Rodar pelo código-fonte
 

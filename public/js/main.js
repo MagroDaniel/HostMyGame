@@ -21,6 +21,7 @@ function showLogin(setup) {
   const f = $('#loginForm');
   $('#loginTitle').textContent = setup ? 'Criar conta de administrador' : 'Entrar';
   $('#loginHint').hidden = !setup;
+  $('#forgotBtn').hidden = setup;
   $('#codeRow').hidden = true;
   f.code.value = '';
   f.dataset.setup = setup ? '1' : '';
@@ -47,6 +48,36 @@ $('#loginForm').addEventListener('submit', async e => {
   f.code.value = '';
   await enterApp();
 });
+
+// ---------- forgotten password ----------
+// The code is written to a file on the panel's PC, so only someone with access to that computer can use it.
+$('#forgotBtn').addEventListener('click', act(async () => {
+  const { file } = await api('POST', '/api/auth/recover/start');
+  const { el, close } = openModal(`
+    <div class="modal-head"><h2>Recuperar senha</h2><button class="icon-btn" data-close aria-label="Fechar">✕</button></div>
+    <p>No computador onde o painel está instalado, abra este arquivo. Ele tem um código válido por 15 minutos e a lista de usuários do painel:</p>
+    <code class="recover-file">${esc(file)}</code>
+    <p class="hint">Na versão instalada, use Menu Iniciar → Host My Game → Pasta de dados.</p>
+    <form class="form" id="recoverForm">
+      <label>Usuário<input name="username" autocomplete="username" required value="${esc($('#loginForm').username.value.trim())}"></label>
+      <label>Código do arquivo<input name="code" autocomplete="one-time-code" required spellcheck="false" placeholder="xxxxx-xxxxx"></label>
+      <label>Nova senha<input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
+      <label>Repita a nova senha<input name="confirm" type="password" autocomplete="new-password" minlength="8" required></label>
+      <label class="check"><input type="checkbox" name="disableTotp"> Também desativar a verificação em duas etapas (perdi o celular do autenticador)</label>
+      <div class="modal-actions"><button type="button" data-close>Cancelar</button><button class="primary">Trocar senha</button></div>
+    </form>`);
+  $('#recoverForm', el).addEventListener('submit', act(async e => {
+    e.preventDefault();
+    const f = e.target;
+    if (f.password.value !== f.confirm.value) throw new Error('As senhas não são iguais');
+    await api('POST', '/api/auth/recover/finish', { username: f.username.value.trim(), code: f.code.value.trim(), password: f.password.value, disableTotp: f.disableTotp.checked });
+    close();
+    $('#loginForm').username.value = f.username.value.trim();
+    $('#loginForm').password.focus();
+    toast('Senha alterada. Entre com a nova senha.', 'ok', 8000);
+  }));
+  $('[name=code]', el).focus();
+}));
 
 $('#logoutBtn').addEventListener('click', act(async () => {
   closeUserMenu();

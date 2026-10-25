@@ -1,7 +1,9 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import QRCode from 'qrcode';
-import { db, save } from './store.js';
+import { DATA_DIR, db, save } from './store.js';
 import { httpError } from './util.js';
 import * as totp from './totp.js';
 
@@ -240,6 +242,72 @@ export function regenerateRecoveryCodes(username) {
   const user = findUser(username);
   if (!user?.totpSecret) throw httpError(400, 'Ative a verificação em duas etapas primeiro');
   return newRecoveryCodes(user);
+}
+
+// ---------- forgotten password ----------
+// There is no e-mail to send a link to, so recovery proves access to this PC instead: "Esqueci minha senha"
+// writes a one-time code to a file in the data folder, and only someone who can open that file can use it.
+// One code at a time, valid for 15 minutes and 5 attempts; only its hash is kept, in memory.
+export const RECOVERY_FILE = path.join(DATA_DIR, 'RECUPERAR-SENHA.txt');
+const RECOVERY_TTL = 15 * 60 * 1000;
+const RECOVERY_TRIES = 5;
+let recovery = null; // { hash, expires, tries }
+let lastRecoveryRequest = 0;
+
+function clearRecovery() {
+  recovery = null;
+  fs.rmSync(RECOVERY_FILE, { force: true });
+}
+
+export function startRecovery() {
+  const now = Date.now();
+  if (now - lastRecoveryRequest < 10_000) throw httpError(429, 'Aguarde alguns segundos antes de pedir outro código');
+  lastRecoveryRequest = now;
+  const x = crypto.randomBytes(5).toString('hex');
+  const code = `${x.slice(0, 5)}-${x.slice(5)}`;
+  recovery = { hash: sha256(normCode(code)), expires: now + RECOVERY_TTL, tries: 0 };
+  const until = new Date(recovery.expires).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  // The BOM makes Notepad pick UTF-8, so the accents show correctly.
+  fs.writeFileSync(RECOVERY_FILE, '﻿' + [
+    'Host My Game - recuperação de senha',
+    '',
+    `Código: ${code}`,
+    `Válido até ${until} (15 minutos) e para uma única troca de senha.`,
+    '',
+    `Usuários deste painel: ${db.users.map(u => u.username).join(', ')}`,
+    '',
+    'Volte à tela de login, digite o usuário, este código e a nova senha.',
+    'Se não foi você que pediu, apague este arquivo: o código deixa de valer quando expira ou é usado.',
+    '',
+  ].join('\r\n'));
+  return RECOVERY_FILE;
+}
+
+export async function finishRecovery(username, code, password, disableTotp) {
+  if (!recovery || recovery.expires < Date.now()) {
+    clearRecovery();
+    throw httpError(400, 'Código expirado ou inexistente. Peça um novo código.');
+  }
+  const given = Buffer.from(sha256(normCode(code)));
+  if (!crypto.timingSafeEqual(given, Buffer.from(recovery.hash))) {
+    if (++recovery.tries >= RECOVERY_TRIES) {
+      clearRecovery();
+      throw httpError(400, 'Código incorreto. Tentativas esgotadas: peça um novo código.');
+    }
+    throw httpError(400, `Código incorreto (${RECOVERY_TRIES - recovery.tries} tentativa(s) restante(s))`);
+  }
+  const user = findUser(String(username || ''));
+  if (!user) throw httpError(400, 'Usuário não encontrado. Os usuários deste painel estão listados no arquivo do código.');
+  validate(user.username, password);
+  user.hash = await bcrypt.hash(password, 12);
+  if (disableTotp) {
+    delete user.totpSecret;
+    delete user.recoveryHashes;
+  }
+  save();
+  dropSessions(user.username);
+  clearRecovery();
+  return user.username;
 }
 
 // ---------- API keys ----------
