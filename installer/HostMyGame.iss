@@ -1,4 +1,4 @@
-; Inno Setup script for the Windows installer. Built by installer\build.ps1, which stages the files first.
+﻿; Inno Setup script for the Windows installer. Built by installer\build.ps1, which stages the files first.
 #ifndef AppVersion
   #define AppVersion "0.0.0"
 #endif
@@ -49,6 +49,8 @@ Filename: "{group}\Abrir o painel.url"; Section: "InternetShortcut"; Key: "IconF
 Filename: "{group}\Abrir o painel.url"; Section: "InternetShortcut"; Key: "IconIndex"; String: "0"
 
 [Icons]
+Name: "{group}\Host My Game (ícone na bandeja)"; Filename: "{app}\HostMyGameTray.exe"
+Name: "{commonstartup}\Host My Game"; Filename: "{app}\HostMyGameTray.exe"
 Name: "{group}\Pasta de dados"; Filename: "{commonappdata}\HostMyGame"
 Name: "{group}\Desinstalar Host My Game"; Filename: "{uninstallexe}"
 
@@ -57,10 +59,14 @@ Name: "{group}\Desinstalar Host My Game"; Filename: "{uninstallexe}"
 Filename: "{app}\HostMyGameService.exe"; Parameters: "install"; Flags: runhidden waituntilterminated; StatusMsg: "Registrando o serviço do Windows..."
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Host My Game"""; Flags: runhidden waituntilterminated
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""Host My Game"" dir=in action=allow program=""{app}\node\node.exe"" enable=yes"; Flags: runhidden waituntilterminated
+; Lets users signed in to this PC (IU) start and stop this one service from the tray icon without elevation.
+Filename: "{sys}\sc.exe"; Parameters: "sdset HostMyGame D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWRPWPDTLOCRRC;;;IU)(A;;CCLCSWLOCRRC;;;SU)"; Flags: runhidden waituntilterminated
 Filename: "{app}\HostMyGameService.exe"; Parameters: "start"; Flags: runhidden waituntilterminated; StatusMsg: "Iniciando o painel..."
+Filename: "{app}\HostMyGameTray.exe"; Flags: nowait runasoriginaluser skipifsilent
 Filename: "{#PanelUrl}"; Description: "Abrir o painel no navegador"; Flags: postinstall shellexec nowait skipifsilent
 
 [UninstallRun]
+Filename: "{sys}\taskkill.exe"; Parameters: "/IM HostMyGameTray.exe /F"; Flags: runhidden waituntilterminated; RunOnceId: "StopTray"
 Filename: "{app}\HostMyGameService.exe"; Parameters: "stopwait"; Flags: runhidden waituntilterminated; RunOnceId: "StopService"
 Filename: "{app}\HostMyGameService.exe"; Parameters: "uninstall"; Flags: runhidden waituntilterminated; RunOnceId: "RemoveService"
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Host My Game"""; Flags: runhidden waituntilterminated; RunOnceId: "RemoveFirewall"

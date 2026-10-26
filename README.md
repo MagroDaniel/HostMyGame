@@ -52,7 +52,8 @@ O instalador já traz tudo o que precisa: não é preciso instalar Node.js nem J
 | Programa | `C:\Program Files\HostMyGame` |
 | Servidores, backups e contas | `C:\ProgramData\HostMyGame` |
 | Logs do painel | `C:\ProgramData\HostMyGame\logs` |
-| Atalhos | Menu Iniciar → Host My Game ("Abrir o painel" e "Pasta de dados") |
+| Atalhos | Menu Iniciar → Host My Game ("Abrir o painel", "Pasta de dados" e "Host My Game (ícone na bandeja)") |
+| Ícone perto do relógio | Abre com o Windows. Clique duplo abre o painel; o botão direito inicia, para ou reinicia o painel |
 
 Atualizar ou reinstalar nunca mexe nos seus servidores. Ao desinstalar, o instalador pergunta se você quer apagar os dados; o padrão é manter.
 

@@ -46,6 +46,13 @@ Copy-Item (Get-Cached "https://nodejs.org/dist/v$NodeVersion/win-x64/node.exe" "
 Copy-Item (Get-Cached "https://github.com/winsw/winsw/releases/download/v$WinSWVersion/WinSW-x64.exe" "WinSW-$WinSWVersion-x64.exe") (Join-Path $stage 'HostMyGameService.exe')
 Copy-Item (Join-Path $PSScriptRoot 'HostMyGameService.xml'), (Join-Path $PSScriptRoot 'logo.ico') $stage
 
+# Tray icon, built with the C# compiler that ships with Windows (.NET Framework 4.x).
+Write-Host 'Compilando o icone da bandeja (HostMyGameTray.exe)...'
+$csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+& $csc /nologo /optimize /target:winexe "/out:$(Join-Path $stage 'HostMyGameTray.exe')" "/win32icon:$(Join-Path $PSScriptRoot 'logo.ico')" `
+  /r:System.ServiceProcess.dll /r:System.Windows.Forms.dll /r:System.Drawing.dll (Join-Path $PSScriptRoot 'tray\HostMyGameTray.cs')
+if ($LASTEXITCODE) { throw 'Falha ao compilar o icone da bandeja' }
+
 $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
 if (-not $iscc) { $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source }
 if (-not $iscc) { throw 'Inno Setup 6 não encontrado (https://jrsoftware.org/isdl.php)' }
