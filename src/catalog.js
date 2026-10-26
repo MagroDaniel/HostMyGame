@@ -171,6 +171,7 @@ const OTHER = [
       { key: 'description', label: 'Descrição no Content Manager', type: 'text', default: 'Trânsito japonês e pontuação por ultrapassagens. Precisa de CSP.' },
       { key: 'acPath', label: 'Pasta do Assetto Corsa (vazio = detectar a da Steam)', type: 'text', default: '', advanced: true },
       { key: 'clientTrafficTest', label: 'Teste de trânsito no cliente (experimental)', type: 'bool', default: false, advanced: true, hint: 'Coloca um carro de teste desenhado pelo script à sua frente e mostra um diagnóstico na tela. Só para testes.' },
+      { key: 'trackPhysicsFlag', label: 'Liberar física da pista pelo servidor (experimental)', type: 'bool', default: false, advanced: true, hint: 'Marca a pista com "física personalizada" para o CSP dos jogadores (opção CustomTrackPhysics). Teste para a colisão do trânsito no cliente; desligue se causar problemas.' },
     ],
     ports: [{ name: 'Jogo', port: '{{port}}', proto: 'both' }, { name: 'HTTP', port: '{{httpPort}}', proto: 'tcp' }],
     console: 'stdin', query: { type: 'assettoserver', port: '{{httpPort}}' }, backupPaths: 'cfg',

@@ -166,6 +166,15 @@ function realisticAi(traffic) {
   return lines;
 }
 
+// CSP reads options encoded in the track name: csp/<minimum CSP build>/../<flags letter>/../<track>, where the
+// letter is 'A' + flags (1 custom car physics, 2 custom track physics, 4 hide pit crew). See AssettoServer's
+// CSPTrackOptions. 2651 is CSP 0.2.0, the version the server already requires.
+const CSP_MIN_BUILD = 2651;
+const TRACK_FLAG_CUSTOM_PHYSICS = 2;
+const trackName = s => (s.trackPhysicsFlag
+  ? `csp/${CSP_MIN_BUILD}/../${String.fromCharCode(65 + TRACK_FLAG_CUSTOM_PHYSICS)}/../${s.track}`
+  : s.track);
+
 // ---- config files ----
 const ini = sections => Object.entries(sections).map(([name, keys]) => `[${name}]\r\n${Object.entries(keys).map(([k, v]) => `${k}=${v ?? ''}`).join('\r\n')}\r\n`).join('\r\n');
 const yamlString = s => JSON.stringify(String(s ?? ''));
@@ -230,7 +239,7 @@ export async function prepareAssettoServer(inst, log) {
   const hour = Math.min(18, Math.max(8, Number(s.timeOfDay) || 14));
   fs.writeFileSync(path.join(cfg, 'server_cfg.ini'), ini({
     SERVER: {
-      NAME: s.serverName, CARS: [...new Set([...cars, ...(useAi ? traffic : [])])].join(';'), TRACK: s.track, CONFIG_TRACK: s.layout || '',
+      NAME: s.serverName, CARS: [...new Set([...cars, ...(useAi ? traffic : [])])].join(';'), TRACK: trackName(s), CONFIG_TRACK: s.layout || '',
       SUN_ANGLE: Math.round(16 * (hour - 13)), PASSWORD: s.password || '', ADMIN_PASSWORD: s.adminPassword || '',
       UDP_PORT: s.port, TCP_PORT: s.port, HTTP_PORT: s.httpPort, MAX_CLIENTS: entries.length,
       REGISTER_TO_LOBBY: s.publicList ? 1 : 0, PICKUP_MODE_ENABLED: 1, LOCKED_ENTRY_LIST: 0, LOOP_MODE: 1, SLEEP_TIME: 1,
