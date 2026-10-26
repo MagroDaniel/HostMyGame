@@ -1,6 +1,6 @@
 {
   "name": "host-my-game",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "description": "Painel web para hospedar servidores de jogos (Minecraft e SteamCMD)",
   "type": "module",
   "private": true,

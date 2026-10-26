@@ -12,6 +12,7 @@ import { IS_WIN, copyOver, download, extract, fetchJson } from '../util.js';
 const REPO = 'compujuckel/AssettoServer';
 const ASSET = IS_WIN ? 'assetto-server-win-x64.zip' : 'assetto-server-linux-x64.tar.gz';
 const SCRIPT = 'hmg_traffic_score.lua';
+const PROBE_SCRIPT = 'hmg_traffic_probe.lua';
 
 // Releases are rare and pre-releases weekly; the project recommends the newest pre-release.
 async function newestRelease() {
@@ -269,9 +270,10 @@ export async function prepareAssettoServer(inst, log) {
   const www = path.join(inst.dir, 'wwwroot');
   fs.mkdirSync(www, { recursive: true });
   const options = path.join(cfg, 'csp_extra_options.ini');
-  if (s.scoring) {
-    fs.copyFileSync(path.join(ROOT, 'src', 'providers', 'assets', SCRIPT), path.join(www, SCRIPT));
-    fs.writeFileSync(options, `[SCRIPT_1-hmg_traffic_score]\r\nSCRIPT = 'http://{ServerIP}:{ServerHTTPPort}/static/${SCRIPT}'\r\n`);
+  const scripts = [s.scoring && SCRIPT, s.clientTrafficTest && PROBE_SCRIPT].filter(Boolean);
+  for (const f of scripts) fs.copyFileSync(path.join(ROOT, 'src', 'providers', 'assets', f), path.join(www, f));
+  if (scripts.length) {
+    fs.writeFileSync(options, scripts.map((f, i) => `[SCRIPT_${i + 1}-${f.replace(/\.lua$/, '')}]\r\nSCRIPT = 'http://{ServerIP}:{ServerHTTPPort}/static/${f}'\r\n`).join('\r\n'));
   } else {
     fs.rmSync(options, { force: true });
   }
