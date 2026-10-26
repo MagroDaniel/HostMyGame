@@ -38,20 +38,48 @@ if model then
     return true
   end)
 end
+-- Tamanho: mede o modelo carregado e corrige a escala se o comprimento fugir muito do de um Prius real.
+local REAL_LENGTH = 4.5
+local modelScale, modelSize = 1, nil
+if model then
+  check('Medir o tamanho do modelo', function()
+    local mn, mx = model:getLocalAABB()
+    modelSize = mx - mn
+    local length = math.max(modelSize.x, modelSize.z)
+    if length > 0.5 and (length > REAL_LENGTH * 1.25 or length < REAL_LENGTH * 0.75) then modelScale = REAL_LENGTH / length end
+    return true
+  end)
+end
+
 -- Colisão: corpos físicos de script exigem que a pista libere a física por script (o SRP não libera). Então o
--- script detecta o encosto sozinho (duas caixas vistas de cima) e muda a velocidade do carro do jogador como
--- num impacto.
+-- script detecta o encosto sozinho (duas caixas vistas de cima), muda a velocidade do carro do jogador com
+-- physics.setCarVelocity e dá ao carro do trânsito uma física simples: ele leva a parte dele do impacto,
+-- desliza perdendo velocidade e depois volta para a faixa aos poucos.
 local TRAFFIC_HALF = vec2(0.88, 2.25)   -- meia largura, meio comprimento (Prius: 1,76 m × 4,5 m)
 local PLAYER_HALF = vec2(0.95, 2.3)
-local RESTITUTION = 0.25                -- 0 = os carros grudam, 1 = quique perfeito
-local STOP_S = 4                        -- o carro do trânsito fica parado depois da batida e depois segue
+local RESTITUTION = 0.3                 -- 0 = os carros grudam, 1 = quique perfeito
+local FRICTION = 3                      -- m/s² de desaceleração do carro do trânsito deslizando
+local IMPACT_SPEED = 1                  -- m/s: aproximação acima disso é batida; abaixo é só encostar/empurrar
+local STOP_S = 3                        -- tempo mínimo deslizando/parado antes de voltar a andar
+local REJOIN_S = 3                      -- tempo para voltar ao centro da faixa
 
 local hits, progress = 0, nil
 local direction = 1         -- +1 segue o sentido do traçado, -1 vai contra ele (o sentido em que o jogador está)
 local trafficSpeed = SPEED_KMH / 3.6
-local stoppedUntil, lastHit = 0, -1
+local carPos, carLook, carVel = nil, nil, vec3()
+local free, freeSince = false, 0        -- free: depois de uma batida, o carro anda pela física simples
+local drift = vec3()                    -- desvio do centro da faixa, que some aos poucos
 local pushStatus = 'ainda sem batida'   -- se o physics.setCarVelocity foi aceito
 local frameError = nil
+
+local function placeModel()
+  if modelScale ~= 1 then
+    model:getTransformationRaw():set(mat4x4.scaling(vec3(modelScale, modelScale, modelScale)):mul(mat4x4.look(carPos, carLook, up)))
+  else
+    model:setPosition(carPos)
+    model:setOrientation(carLook, up)
+  end
+end
 
 -- Coloca o carro à frente do jogador, andando no mesmo sentido em que ele está virado.
 local function placeAhead(player, len)
@@ -92,41 +120,63 @@ function script.update(dt)
     if not progress then placeAhead(player, len) end
     local now = os.clock()
 
-    -- Um carro parado (depois de uma batida) acelera de volta até a velocidade de cruzeiro.
-    if now >= stoppedUntil then trafficSpeed = math.min(SPEED_KMH / 3.6, trafficSpeed + 2.5 * dt) end
-    progress = (progress + direction * trafficSpeed * dt / len) % 1
-    local pos = ac.trackProgressToWorldCoordinate(progress)
-    if pos:distance(player.position) > RESPAWN_M then
-      placeAhead(player, len)
-      pos = ac.trackProgressToWorldCoordinate(progress)
-    end
-    local look = (ac.trackProgressToWorldCoordinate((progress + direction * 3 / len) % 1) - pos):normalize()
-    model:setPosition(pos)
-    model:setOrientation(look, up)
-
-    -- Batida com o carro do jogador: um impulso na direção do empurrão, dividido pelas massas como num impacto real.
-    local depth, normal = boxOverlap(player.position, player.look, PLAYER_HALF, pos, look, TRAFFIC_HALF)
-    if depth and now - lastHit > 0.15 then
-      local trafficVel = look * trafficSpeed
-      local approach = (player.velocity - trafficVel):dot(normal)
-      if approach < 0 then
-        lastHit = now
-        hits = hits + 1
-        local mp, mt = carMass(player), MASS
-        local newVel = player.velocity - normal * ((1 + RESTITUTION) * approach * mt / (mp + mt))
-        local pushed, pushErr = pcall(function() physics.setCarVelocity(0, newVel) end)
-        pushStatus = pushed and 'aceito' or ('recusado: ' .. tostring(pushErr))
+    if free then
+      -- Depois da batida: desliza perdendo velocidade pelo atrito.
+      local speed = carVel:length()
+      local slower = math.max(0, speed - FRICTION * dt)
+      carVel = speed > 0.01 and carVel * (slower / speed) or vec3()
+      carPos = carPos + carVel * dt
+      if now - freeSince > STOP_S and slower < 0.5 then
+        -- Volta a andar a partir do ponto do traçado mais próximo; o desvio da faixa some aos poucos.
+        progress = ac.worldCoordinateToTrackProgress(carPos)
+        drift = carPos - ac.trackProgressToWorldCoordinate(progress)
+        drift.y = 0
         trafficSpeed = 0
-        stoppedUntil = now + STOP_S
+        free = false
+      end
+    else
+      trafficSpeed = math.min(SPEED_KMH / 3.6, trafficSpeed + 2.5 * dt)
+      progress = (progress + direction * trafficSpeed * dt / len) % 1
+      local base = ac.trackProgressToWorldCoordinate(progress)
+      if base:distance(player.position) > RESPAWN_M then
+        placeAhead(player, len)
+        base = ac.trackProgressToWorldCoordinate(progress)
+        drift = vec3()
+      end
+      carLook = (ac.trackProgressToWorldCoordinate((progress + direction * 3 / len) % 1) - base):normalize()
+      drift = drift * math.max(0, 1 - dt / REJOIN_S)
+      carPos = base + drift
+      carVel = carLook * trafficSpeed
+    end
+
+    -- Batida com o carro do jogador.
+    local depth, normal = boxOverlap(player.position, player.look, PLAYER_HALF, carPos, carLook, TRAFFIC_HALF)
+    if depth then
+      local approach = (player.velocity - carVel):dot(normal)
+      -- Separação com antecipação: além da sobreposição atual, o quanto o jogador ainda avança até o próximo
+      -- quadro, para os carros não ficarem um dentro do outro.
+      carPos = carPos - normal * (depth + math.max(0, -approach) * dt + 0.02)
+      if not free then free, freeSince = true, now end
+      if approach < 0 then
+        -- Impulso clássico entre duas massas, dividido entre os dois carros. Encostar devagar não quica.
+        local impact = approach < -IMPACT_SPEED
+        if impact then hits = hits + 1 end
+        freeSince = now
+        local mp, mt = carMass(player), MASS
+        local impulse = (1 + (impact and RESTITUTION or 0)) * approach / (1 / mp + 1 / mt)
+        carVel = carVel + normal * (impulse / mt)
+        local pushed, pushErr = pcall(function() physics.setCarVelocity(0, player.velocity - normal * (impulse / mp)) end)
+        pushStatus = pushed and 'aceito' or ('recusado: ' .. tostring(pushErr))
       end
     end
+    placeModel()
   end)
   if not ok then frameError = tostring(err) end
 end
 
 function script.drawUI()
   local x, y, w = 20, 120, 430
-  local h = 94 + 20 * #checks + (frameError and 40 or 0)
+  local h = 116 + 20 * #checks + (frameError and 40 or 0)
   ui.beginTransparentWindow('hmgTrafficProbe', vec2(x, y), vec2(w, h))
   ui.drawRectFilled(vec2(0, 0), vec2(w, h), rgbm(0, 0, 0, 0.55), 6)
   ui.setCursor(vec2(10, 8))
@@ -138,14 +188,18 @@ function script.drawUI()
     line = line + 20
   end
   local player = ac.getCar(0)
-  local dist = (model and player and progress) and ac.trackProgressToWorldCoordinate(progress):distance(player.position) or -1
+  local dist = (player and carPos) and carPos:distance(player.position) or -1
   ui.setCursor(vec2(10, line + 4))
-  ui.text(string.format('Distância até o carro: %.0f m   Batidas: %d   %s', dist, hits, os.clock() < stoppedUntil and 'parado (batida)' or 'andando'))
+  ui.text(string.format('Distância até o carro: %.0f m   Batidas: %d   %s', dist, hits, free and 'deslizando (batida)' or 'andando'))
+  if modelSize then
+    ui.setCursor(vec2(10, line + 44))
+    ui.text(string.format('Tamanho do modelo: %.1f × %.1f × %.1f m   escala aplicada: %.2f', modelSize.x, modelSize.y, modelSize.z, modelScale))
+  end
   ui.setCursor(vec2(10, line + 24))
   ui.textColored('Empurrão no seu carro: ' .. pushStatus:sub(1, 60), pushStatus == 'aceito' and rgbm(0.5, 1, 0.6, 1)
     or pushStatus:find('recusado') and rgbm(1, 0.4, 0.4, 1) or rgbm(1, 1, 1, 1))
   if frameError then
-    ui.setCursor(vec2(10, line + 48))
+    ui.setCursor(vec2(10, line + 66))
     ui.textColored('Erro no update: ' .. frameError:sub(1, 70), rgbm(1, 0.4, 0.4, 1))
   end
   ui.endTransparentWindow()
