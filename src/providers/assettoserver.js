@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { ROOT, TOOLS_DIR } from '../store.js';
+import { AC_TRAFFIC_CARS } from '../catalog.js';
 import { IS_WIN, copyOver, download, extract, fetchJson } from '../util.js';
 
 const REPO = 'compujuckel/AssettoServer';
@@ -110,6 +111,60 @@ const skinsOf = carDir => {
 
 const listSetting = v => String(v || '').split(/[\s,;]+/).map(s => s.trim()).filter(Boolean);
 
+// Traffic profiles: every distinct model is loaded on every player's PC, so fewer models with more slots each
+// give the same amount of traffic for less memory and loading time.
+const TRAFFIC_PROFILES = {
+  leve: ['traffic_aegis_toyota_markii_taxi', 'traffic_aegis_toyota_prius', 'traffic_isuzu_npr', 'traffic_aegis_toyota_vellfire', 'traffic_aegis_suzuki_alto_works', 'traffic_toyota_camry'],
+  normal: ['traffic_aegis_toyota_markii_taxi', 'traffic_aegis_toyota_prius', 'traffic_isuzu_npr', 'traffic_aegis_toyota_vellfire', 'traffic_aegis_suzuki_alto_works', 'traffic_toyota_camry',
+    'traffic_aegis_ud_quon', 'traffic_aegis_subaru_levorg', 'traffic_nissan_leaf', 'traffic_aegis_izuzu_npr_box'],
+};
+const AI_SLOTS_TARGET = 60;
+
+// Heavy vehicles of the bundled traffic packs: real length (so following cars keep a safe gap), slower
+// acceleration, and only the slow lane (the left one on Japanese roads like Shutoko).
+const HEAVY = {
+  traffic_aegis_airport_bus: { pre: 6, post: 6 },
+  traffic_aegis_ud_quon: { pre: 5.5, post: 5.5 },
+  traffic_aegis_izuzu_npr: { pre: 3.2, post: 3 },
+  traffic_aegis_izuzu_npr_box: { pre: 3.2, post: 3.2 },
+  traffic_isuzu_npr: { pre: 3.2, post: 3 },
+  traffic_isuzu_flatbed: { pre: 3.2, post: 3.4 },
+  traffic_isuzu_hauler: { pre: 3.2, post: 3.4 },
+  traffic_isuzu_haulerb: { pre: 3.2, post: 3.4 },
+  traffic_isuzu_tanker: { pre: 3.2, post: 3.4 },
+};
+
+function trafficModels(s) {
+  if (!s.traffic) return [];
+  if (s.trafficProfile === 'personalizado') return listSetting(s.trafficCars);
+  if (s.trafficProfile === 'variado') return listSetting(AC_TRAFFIC_CARS);
+  return TRAFFIC_PROFILES[s.trafficProfile] || TRAFFIC_PROFILES.leve;
+}
+
+// AiParams lines for the "realista" preset, tuned for highways like Shutoko.
+function realisticAi(traffic) {
+  const lines = [
+    '  MinAiSafetyDistanceMeters: 25',
+    '  MaxAiSafetyDistanceMeters: 80',
+    '  MinCollisionStopTimeSeconds: 2',
+    '  MaxCollisionStopTimeSeconds: 4',
+    '  IgnoreObstaclesAfterSeconds: 8',
+    '  DefaultDeceleration: 7',
+    '  CorneringSpeedFactor: 0.6',
+    '  RightLaneOffsetKph: 15',
+    '  MaxSpeedVariationPercent: 0.12',
+  ];
+  const heavy = traffic.filter(m => HEAVY[m]);
+  if (heavy.length) {
+    lines.push('  CarSpecificOverrides:');
+    for (const m of heavy) {
+      lines.push(`    - Model: ${m}`, '      Acceleration: 1.5', '      Deceleration: 6', `      VehicleLengthPreMeters: ${HEAVY[m].pre}`,
+        `      VehicleLengthPostMeters: ${HEAVY[m].post}`, '      MinAiSafetyDistanceMeters: 30', '      AllowedLanes: [Left]');
+    }
+  }
+  return lines;
+}
+
 // ---- config files ----
 const ini = sections => Object.entries(sections).map(([name, keys]) => `[${name}]\r\n${Object.entries(keys).map(([k, v]) => `${k}=${v ?? ''}`).join('\r\n')}\r\n`).join('\r\n');
 const yamlString = s => JSON.stringify(String(s ?? ''));
@@ -139,7 +194,7 @@ export async function prepareAssettoServer(inst, log) {
   const layout = s.layout ? track.layouts.find(l => l.name === s.layout) : null;
   if (s.layout && !layout) throw new Error(`A pista ${s.track} não tem o layout "${s.layout}". Layouts: ${track.layouts.map(l => l.name).join(', ') || 'nenhum'}.`);
 
-  const cars = listSetting(s.cars), traffic = s.traffic ? listSetting(s.trafficCars) : [];
+  const cars = listSetting(s.cars), traffic = trafficModels(s);
   if (!cars.length) throw new Error('Escolha pelo menos um carro para os jogadores.');
   const missing = [...cars, ...traffic].filter(c => !content.cars.includes(c));
   if (missing.length) throw new Error(`Carros que não estão instalados no Assetto Corsa: ${missing.join(', ')}.`);
@@ -160,12 +215,13 @@ export async function prepareAssettoServer(inst, log) {
   }
   if (copied) log(`Conteúdo copiado do Assetto Corsa: ${copied} arquivo(s).`);
 
-  // Entry list: enough player slots for every car, then three slots per traffic car (AI fills them).
+  // Entry list: enough player slots for every car, then about 60 AI slots spread over the traffic models.
   const maxPlayers = Math.max(1, Number(s.maxPlayers) || 16);
   const perCar = Math.max(1, Math.ceil(maxPlayers / cars.length));
+  const perTraffic = traffic.length ? Math.max(2, Math.ceil(AI_SLOTS_TARGET / traffic.length)) : 0;
   const entries = [];
   for (const car of cars) for (let i = 0; i < perCar; i++) entries.push({ MODEL: car, SKIN: skins[car][i % Math.max(1, skins[car].length)] || '', SPECTATOR_MODE: 0, DRIVERNAME: '', TEAM: '', GUID: '', BALLAST: 0, RESTRICTOR: 0 });
-  if (useAi) for (const car of traffic) for (let i = 0; i < 3; i++) entries.push({ MODEL: car, SKIN: skins[car][i % Math.max(1, skins[car].length)] || '', SPECTATOR_MODE: 0, DRIVERNAME: '', TEAM: '', GUID: '', BALLAST: 0, RESTRICTOR: 0, AI: 'fixed' });
+  if (useAi) for (const car of traffic) for (let i = 0; i < perTraffic; i++) entries.push({ MODEL: car, SKIN: skins[car][i % Math.max(1, skins[car].length)] || '', SPECTATOR_MODE: 0, DRIVERNAME: '', TEAM: '', GUID: '', BALLAST: 0, RESTRICTOR: 0, AI: 'fixed' });
   if (entries.length > 255) throw new Error(`São ${entries.length} vagas (jogadores + trânsito); o máximo do Assetto Corsa é 255. Diminua os jogadores ou os carros de trânsito.`);
 
   const cfg = path.join(inst.dir, 'cfg');
@@ -205,6 +261,7 @@ export async function prepareAssettoServer(inst, log) {
     `  TwoWayTraffic: ${Boolean(s.twoWay)}`,
     '  HideAiCars: true',
     '  NamePrefix: "Traffic"',
+    ...(useAi && s.trafficBehavior !== 'padrao' ? realisticAi(traffic) : []),
     '',
   ].join('\n'));
 
@@ -218,5 +275,5 @@ export async function prepareAssettoServer(inst, log) {
   } else {
     fs.rmSync(options, { force: true });
   }
-  log(`Servidor: ${s.track}${s.layout ? `/${s.layout}` : ''}, ${cars.length} carro(s) para até ${maxPlayers} jogadores${useAi ? `, trânsito com ${traffic.length} modelo(s)` : ', sem trânsito'}${s.scoring ? ', pontuação de tráfego ligada' : ''}.`);
+  log(`Servidor: ${s.track}${s.layout ? `/${s.layout}` : ''}, ${cars.length} carro(s) para até ${maxPlayers} jogadores${useAi ? `, trânsito com ${traffic.length} modelo(s) × ${perTraffic} vagas (${s.trafficBehavior === 'padrao' ? 'comportamento padrão' : 'comportamento realista'})` : ', sem trânsito'}${s.scoring ? ', pontuação de tráfego ligada' : ''}.`);
 }

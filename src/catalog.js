@@ -130,7 +130,7 @@ const AC_PLAYER_CARS = [
   'ddm_nissan_skyline_bnr32', 'ddm_nissan_silvia_s15', 'ddm_mazda_rx7_infini_fc3s', 'ddm_toyota_supra_ma70', 'ddm_honda_civic_fd2',
   'ddm_subaru_22b', 'ddm_toyota_mr2_sw20_shuto', 'ddm_nissan_skyline_hr31_house', 'hsrc_mazda_rx7_aspec', 'hsrc_honda_nsx_ss', 'hsrc_toyota_a80_creek',
 ].join(', ');
-const AC_TRAFFIC_CARS = [
+export const AC_TRAFFIC_CARS = [
   'traffic_aegis_airport_bus', 'traffic_aegis_daihatsu_copen', 'traffic_aegis_izuzu_npr', 'traffic_aegis_izuzu_npr_box', 'traffic_aegis_mazda_cx3',
   'traffic_aegis_subaru_levorg', 'traffic_aegis_suzuki_alto_works', 'traffic_aegis_toyota_markii_taxi', 'traffic_aegis_toyota_prius',
   'traffic_aegis_toyota_vellfire', 'traffic_aegis_ud_quon', 'traffic_audi_a4_jp', 'traffic_isuzu_flatbed', 'traffic_isuzu_hauler',
@@ -152,7 +152,16 @@ const OTHER = [
       { key: 'layout', label: 'Layout da pista (vazio = sem layout)', type: 'text', default: 'main_layout' },
       { key: 'cars', label: 'Carros dos jogadores (pastas em content/cars, separadas por vírgula)', type: 'text', default: AC_PLAYER_CARS },
       { key: 'traffic', label: 'Trânsito de IA', type: 'bool', default: true },
-      { key: 'trafficCars', label: 'Carros do trânsito (separados por vírgula)', type: 'text', default: AC_TRAFFIC_CARS },
+      {
+        key: 'trafficProfile', label: 'Carros do trânsito', type: 'select', default: 'leve',
+        options: [['leve', 'Leve — 6 modelos (o jogo carrega menos e roda mais leve)'], ['normal', 'Normal — 10 modelos'], ['variado', 'Variado — 22 modelos'], ['personalizado', 'Personalizado (lista abaixo)']],
+        hint: 'Cada modelo diferente é carregado no PC de cada jogador. Menos modelos com mais carros de cada = mesmo trânsito, jogo mais leve.',
+      },
+      { key: 'trafficCars', label: 'Carros do trânsito no modo Personalizado (separados por vírgula)', type: 'text', default: AC_TRAFFIC_CARS },
+      {
+        key: 'trafficBehavior', label: 'Comportamento do trânsito', type: 'select', default: 'realista',
+        options: [['realista', 'Realista — mais espaço entre carros, caminhões e ônibus só na faixa lenta'], ['padrao', 'Padrão do AssettoServer']],
+      },
       { key: 'trafficDensity', label: 'Densidade do trânsito (%)', type: 'number', default: 100, min: 10, max: 200, hint: '100 = normal. Mais de 100 nem sempre aumenta o trânsito; depende dos jogadores e dos carros.' },
       { key: 'trafficSpeed', label: 'Velocidade do trânsito (km/h)', type: 'number', default: 90, min: 40, max: 200 },
       { key: 'twoWay', label: 'Trânsito nos dois sentidos', type: 'bool', default: false },
