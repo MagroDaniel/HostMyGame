@@ -60,6 +60,9 @@ local PLAYER_HALF = vec2(0.95, 2.3)
 local RESTITUTION = 0.3                 -- 0 = os carros grudam, 1 = quique perfeito
 local FRICTION = 3                      -- m/s² de desaceleração do carro do trânsito deslizando
 local IMPACT_SPEED = 1                  -- m/s: aproximação acima disso é batida; abaixo é só encostar/empurrar
+local IMPACT_GAP_S = 0.25               -- intervalo mínimo entre dois impactos aplicados no carro do jogador
+-- Medidas reais de um Prius (ZVW30), para a caixa de referência desenhada em volta do modelo.
+local REAL_SIZE = vec3(1.76, 1.49, 4.48)
 local STOP_S = 3                        -- tempo mínimo deslizando/parado antes de voltar a andar
 local REJOIN_S = 3                      -- tempo para voltar ao centro da faixa
 
@@ -70,6 +73,9 @@ local carPos, carLook, carVel = nil, nil, vec3()
 local free, freeSince = false, 0        -- free: depois de uma batida, o carro anda pela física simples
 local drift = vec3()                    -- desvio do centro da faixa, que some aos poucos
 local pushStatus = 'ainda sem batida'   -- se o physics.setCarVelocity foi aceito
+local resistStatus = 'ainda sem contato' -- se o physics.addForce (resistência ao empurrar) foi aceito
+local lastImpact = -1
+local worldScale = nil                  -- escala do modelo no mundo, lida da matriz de transformação
 local frameError = nil
 
 local function placeModel()
@@ -157,26 +163,57 @@ function script.update(dt)
       -- quadro, para os carros não ficarem um dentro do outro.
       carPos = carPos - normal * (depth + math.max(0, -approach) * dt + 0.02)
       if not free then free, freeSince = true, now end
-      if approach < 0 then
-        -- Impulso clássico entre duas massas, dividido entre os dois carros. Encostar devagar não quica.
-        local impact = approach < -IMPACT_SPEED
-        if impact then hits = hits + 1 end
-        freeSince = now
-        local mp, mt = carMass(player), MASS
-        local impulse = (1 + (impact and RESTITUTION or 0)) * approach / (1 / mp + 1 / mt)
+      local mp, mt = carMass(player), MASS
+      if approach < -IMPACT_SPEED and now - lastImpact > IMPACT_GAP_S then
+        -- Batida: impulso clássico entre duas massas, dividido entre os dois carros. Só nos impactos a
+        -- velocidade do jogador é trocada; trocar a cada quadro faz o carro "flutuar".
+        lastImpact, freeSince = now, now
+        hits = hits + 1
+        local impulse = (1 + RESTITUTION) * approach / (1 / mp + 1 / mt)
         carVel = carVel + normal * (impulse / mt)
         local pushed, pushErr = pcall(function() physics.setCarVelocity(0, player.velocity - normal * (impulse / mp)) end)
         pushStatus = pushed and 'aceito' or ('recusado: ' .. tostring(pushErr))
+      elseif approach < 0 then
+        -- Encostado e empurrando: o carro do trânsito acompanha (a separação acima cuida disso) e o jogador
+        -- sente só a resistência de empurrar um carro, como uma força normal da física do jogo.
+        freeSince = now
+        carVel = carVel + normal * (approach * mp / (mp + mt))
+        local pushed, pushErr = pcall(function() physics.addForce(0, player.position, false, normal * (mt * FRICTION), false) end)
+        resistStatus = pushed and 'aceita' or ('recusada: ' .. tostring(pushErr))
       end
     end
     placeModel()
+    if not worldScale then
+      local okScale, s = pcall(function() return model:getWorldTransformationRaw().look:length() end)
+      worldScale = okScale and s or -1
+    end
   end)
   if not ok then frameError = tostring(err) end
 end
 
+-- Caixa de referência com o tamanho real de um Prius, apoiada no chão sob o carro: mostra se o modelo está
+-- maior que o normal ou fora do chão.
+function script.draw3D()
+  if not carPos or not carLook then return end
+  local f = vec3(carLook.x, 0, carLook.z):normalize()
+  local r = vec3(-f.z, 0, f.x)
+  local hw, hl, h = REAL_SIZE.x / 2, REAL_SIZE.z / 2, REAL_SIZE.y
+  local color = rgbm(0, 3, 0, 1)
+  local corners = {}
+  for i, c in ipairs({ { 1, 1 }, { 1, -1 }, { -1, -1 }, { -1, 1 } }) do
+    corners[i] = carPos + r * (c[1] * hw) + f * (c[2] * hl)
+  end
+  for i = 1, 4 do
+    local a, b = corners[i], corners[i % 4 + 1]
+    render.debugLine(a, b, color)
+    render.debugLine(a + up * h, b + up * h, color)
+    render.debugLine(a, a + up * h, color)
+  end
+end
+
 function script.drawUI()
   local x, y, w = 20, 120, 430
-  local h = 116 + 20 * #checks + (frameError and 40 or 0)
+  local h = 136 + 20 * #checks + (frameError and 40 or 0)
   ui.beginTransparentWindow('hmgTrafficProbe', vec2(x, y), vec2(w, h))
   ui.drawRectFilled(vec2(0, 0), vec2(w, h), rgbm(0, 0, 0, 0.55), 6)
   ui.setCursor(vec2(10, 8))
@@ -191,15 +228,18 @@ function script.drawUI()
   local dist = (player and carPos) and carPos:distance(player.position) or -1
   ui.setCursor(vec2(10, line + 4))
   ui.text(string.format('Distância até o carro: %.0f m   Batidas: %d   %s', dist, hits, free and 'deslizando (batida)' or 'andando'))
+  ui.setCursor(vec2(10, line + 44))
+  ui.textColored('Resistência ao empurrar: ' .. resistStatus:sub(1, 60), resistStatus == 'aceita' and rgbm(0.5, 1, 0.6, 1)
+    or resistStatus:find('recusada') and rgbm(1, 0.4, 0.4, 1) or rgbm(1, 1, 1, 1))
   if modelSize then
-    ui.setCursor(vec2(10, line + 44))
-    ui.text(string.format('Tamanho do modelo: %.1f × %.1f × %.1f m   escala aplicada: %.2f', modelSize.x, modelSize.y, modelSize.z, modelScale))
+    ui.setCursor(vec2(10, line + 64))
+    ui.text(string.format('Tamanho do modelo: %.1f × %.1f × %.1f m   escala: %.2f   no mundo: %.2f', modelSize.x, modelSize.y, modelSize.z, modelScale, worldScale or -1))
   end
   ui.setCursor(vec2(10, line + 24))
   ui.textColored('Empurrão no seu carro: ' .. pushStatus:sub(1, 60), pushStatus == 'aceito' and rgbm(0.5, 1, 0.6, 1)
     or pushStatus:find('recusado') and rgbm(1, 0.4, 0.4, 1) or rgbm(1, 1, 1, 1))
   if frameError then
-    ui.setCursor(vec2(10, line + 66))
+    ui.setCursor(vec2(10, line + 86))
     ui.textColored('Erro no update: ' .. frameError:sub(1, 70), rgbm(1, 0.4, 0.4, 1))
   end
   ui.endTransparentWindow()
