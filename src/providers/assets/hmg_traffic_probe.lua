@@ -5,6 +5,7 @@
 
 local CAR = 'traffic_aegis_toyota_prius'
 local MODEL = 'traffic_aegis_toyota_prius_lod_c.kn5'
+local MAIN_MODEL = 'traffic_aegis_toyota_prius.kn5' -- LODs carry no textures; they come from the main KN5
 local SKIN = 'Classic Silver Metallic'
 -- Textures the model takes from the skin folder instead of carrying them itself (without them it renders pink).
 local SKIN_TEXTURES = { 'metal_detail.dds', 'Plate_D.dds', 'Plate_NM.dds' }
@@ -28,7 +29,7 @@ local up = vec3(0, 1, 0)
 
 local hasSpline = check('Traçado de IA da pista', function() return ac.hasTrackSpline() end)
 local root = check('Raiz da cena (dynamicRoot)', function() return ac.findNodes('dynamicRoot:yes') end)
-local model = root and check('Carregar modelo 3D (' .. MODEL .. ')', function() return root:loadKN5(carDir .. '/' .. MODEL) end)
+local model = root and check('Carregar modelo 3D (' .. MODEL .. ')', function() return root:loadKN5LOD(carDir .. '/' .. MODEL, carDir .. '/' .. MAIN_MODEL) end)
 if model then
   check('Aplicar textura da skin (' .. SKIN .. ')', function()
     local skin = {}
