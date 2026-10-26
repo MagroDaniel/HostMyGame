@@ -75,6 +75,8 @@ local drift = vec3()                    -- desvio do centro da faixa, que some a
 local pushStatus = 'ainda sem batida'   -- se o physics.setCarVelocity foi aceito
 local resistStatus = 'ainda sem contato' -- se o physics.addForce (resistência ao empurrar) foi aceito
 local lastImpact = -1
+local contactUntil = -1                 -- enquanto o contato não se desfaz, empurrar não conta como batida nova
+local groundStatus = 'ainda não usado'  -- se o physics.raycastTrack funciona aqui
 local worldScale = nil                  -- escala do modelo no mundo, lida da matriz de transformação
 local frameError = nil
 
@@ -112,6 +114,18 @@ local function boxOverlap(posA, lookA, halfA, posB, lookB, halfB)
   return best, vec3(bestAxis.x, 0, bestAxis.y)
 end
 
+-- Altura do chão sob um ponto: um raio para baixo na pista; se o CSP não deixar, a altura do traçado da IA no
+-- ponto mais próximo (bom o bastante numa rodovia).
+local function groundHeight(pos)
+  local ok, d = pcall(function() return physics.raycastTrack(pos + up * 2, vec3(0, -1, 0), 6) end)
+  if ok and d and d >= 0 then
+    groundStatus = 'raio na pista'
+    return pos.y + 2 - d
+  end
+  groundStatus = ok and 'altura do traçado (raio sem acerto)' or 'altura do traçado (raio recusado)'
+  return ac.trackProgressToWorldCoordinate(ac.worldCoordinateToTrackProgress(pos)).y
+end
+
 local function carMass(car)
   local ok, m = pcall(function() return car.mass end)
   return ok and m and m > 100 and m or 1400
@@ -131,7 +145,9 @@ function script.update(dt)
       local speed = carVel:length()
       local slower = math.max(0, speed - FRICTION * dt)
       carVel = speed > 0.01 and carVel * (slower / speed) or vec3()
+      carVel.y = 0
       carPos = carPos + carVel * dt
+      carPos.y = groundHeight(carPos)   -- acompanha o chão; sem isso, o carro voa ou afunda em subidas e descidas
       if now - freeSince > STOP_S and slower < 0.5 then
         -- Volta a andar a partir do ponto do traçado mais próximo; o desvio da faixa some aos poucos.
         progress = ac.worldCoordinateToTrackProgress(carPos)
@@ -164,7 +180,9 @@ function script.update(dt)
       carPos = carPos - normal * (depth + math.max(0, -approach) * dt + 0.02)
       if not free then free, freeSince = true, now end
       local mp, mt = carMass(player), MASS
-      if approach < -IMPACT_SPEED and now - lastImpact > IMPACT_GAP_S then
+      local newContact = now > contactUntil
+      contactUntil = now + 0.3
+      if approach < -IMPACT_SPEED and newContact and now - lastImpact > IMPACT_GAP_S then
         -- Batida: impulso clássico entre duas massas, dividido entre os dois carros. Só nos impactos a
         -- velocidade do jogador é trocada; trocar a cada quadro faz o carro "flutuar".
         lastImpact, freeSince = now, now
@@ -213,7 +231,7 @@ end
 
 function script.drawUI()
   local x, y, w = 20, 120, 430
-  local h = 136 + 20 * #checks + (frameError and 40 or 0)
+  local h = 156 + 20 * #checks + (frameError and 40 or 0)
   ui.beginTransparentWindow('hmgTrafficProbe', vec2(x, y), vec2(w, h))
   ui.drawRectFilled(vec2(0, 0), vec2(w, h), rgbm(0, 0, 0, 0.55), 6)
   ui.setCursor(vec2(10, 8))
@@ -231,6 +249,8 @@ function script.drawUI()
   ui.setCursor(vec2(10, line + 44))
   ui.textColored('Resistência ao empurrar: ' .. resistStatus:sub(1, 60), resistStatus == 'aceita' and rgbm(0.5, 1, 0.6, 1)
     or resistStatus:find('recusada') and rgbm(1, 0.4, 0.4, 1) or rgbm(1, 1, 1, 1))
+  ui.setCursor(vec2(10, line + 84))
+  ui.text('Chão ao deslizar: ' .. groundStatus)
   if modelSize then
     ui.setCursor(vec2(10, line + 64))
     ui.text(string.format('Tamanho do modelo: %.1f × %.1f × %.1f m   escala: %.2f   no mundo: %.2f', modelSize.x, modelSize.y, modelSize.z, modelScale, worldScale or -1))
@@ -239,7 +259,7 @@ function script.drawUI()
   ui.textColored('Empurrão no seu carro: ' .. pushStatus:sub(1, 60), pushStatus == 'aceito' and rgbm(0.5, 1, 0.6, 1)
     or pushStatus:find('recusado') and rgbm(1, 0.4, 0.4, 1) or rgbm(1, 1, 1, 1))
   if frameError then
-    ui.setCursor(vec2(10, line + 86))
+    ui.setCursor(vec2(10, line + 106))
     ui.textColored('Erro no update: ' .. frameError:sub(1, 70), rgbm(1, 0.4, 0.4, 1))
   end
   ui.endTransparentWindow()
