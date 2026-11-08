@@ -300,6 +300,7 @@ export class Instance extends EventEmitter {
     const cwd = t.cwd ? path.join(this.dir, t.cwd) : this.dir;
     const env = { ...process.env, ...t.env };
     this.stopping = false;
+    this.quitRequested = false;
     this.players.clear();
     this.queryInfo = null;
     this.logCount = null;
@@ -375,22 +376,30 @@ export class Instance extends EventEmitter {
     this.metrics = { cpu: 0, mem: 0 };
     this.players.clear();
     this.queryInfo = null;
-    const expected = this.stopping || code === 0;
     this.print(`Processo encerrado (código ${code ?? '?'})`, 'panel');
-    if (expected) return this.setState('Stopped');
+    // Stopped from the panel, or by typing a stop command in its console.
+    if (this.stopping || this.quitRequested) return this.setState('Stopped');
 
-    this.setState('Failed');
+    // A clean exit nobody asked for is usually the server shutting down to update itself
+    // (e.g. a mod that restarts Project Zomboid when a Workshop item changes), so it is
+    // started again like after a crash. The crash counter still stops a start/exit loop.
+    const clean = code === 0;
+    this.setState(clean ? 'Stopped' : 'Failed');
     if (!this.cfg.autoRestart) return;
     const now = Date.now();
     this.crashes = this.crashes.filter(t => now - t < CRASH_WINDOW_MS).concat(now);
     if (this.crashes.length > MAX_CRASH_RESTARTS) {
-      this.print('O servidor travou várias vezes seguidas; reinício automático suspenso.', 'panel');
+      this.print(`O servidor ${clean ? 'se encerrou' : 'travou'} várias vezes seguidas; reinício automático suspenso.`, 'panel');
       return;
     }
-    this.print('Travamento detectado, reiniciando em 5 segundos...', 'panel');
+    this.print(clean
+      ? 'O servidor se encerrou sozinho (provavelmente para atualizar). Iniciando de novo em 5 segundos...'
+      : 'Travamento detectado, reiniciando em 5 segundos...', 'panel');
+    const state = this.state;
     setTimeout(() => {
-      if (this.state !== 'Failed') return;
-      this.start({ skipUpdate: true }).catch(e => this.print(`Reinício automático falhou: ${e.message}`, 'panel'));
+      if (this.state !== state || this.busy) return;
+      // After a clean exit the normal start runs, which updates first when "update on start" is on.
+      this.start({ skipUpdate: !clean }).catch(e => this.print(`Reinício automático falhou: ${e.message}`, 'panel'));
     }, 5000);
   }
 
@@ -404,6 +413,9 @@ export class Instance extends EventEmitter {
     if (!this.proc) throw httpError(409, 'O servidor não está em execução');
     const mode = this.effective('console');
     this.print(`> ${text}`, source);
+    // Typing the stop command (e.g. "quit") means the exit that follows is wanted, not something to restart from.
+    const stopCmds = this.effective('stopCommands').split(/\r?\n/).map(c => this.expand(c.trim()).toLowerCase()).filter(Boolean);
+    if (stopCmds.includes(text.trim().toLowerCase())) this.quitRequested = true;
     if (mode === 'stdin') {
       this.lastSent = text;
       this.lastSentAt = Date.now();

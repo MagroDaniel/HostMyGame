@@ -390,7 +390,7 @@ async function renderSettings(body, d) {
         <label>Descrição<input name="description" value="${esc(c.description || '')}" maxlength="200" placeholder="Opcional — aparece na lista de servidores"></label>
         <label>Tempo limite para parar (segundos)<input name="stopTimeoutSec" type="number" min="5" max="600" value="${c.stopTimeoutSec}"></label>
         <label class="check"><input type="checkbox" name="autoStart" ${c.autoStart ? 'checked' : ''}> Iniciar automaticamente junto com o painel</label>
-        <label class="check"><input type="checkbox" name="autoRestart" ${c.autoRestart ? 'checked' : ''}> Reiniciar automaticamente se o servidor travar</label>
+        <label class="check"><input type="checkbox" name="autoRestart" ${c.autoRestart ? 'checked' : ''}> Reiniciar automaticamente se o servidor travar ou se encerrar sozinho (ex.: para atualizar mods)</label>
         ${t.provider !== 'generic' ? `<label class="check"><input type="checkbox" name="updateOnStart" ${c.updateOnStart ? 'checked' : ''}> Atualizar sempre antes de iniciar</label>` : ''}
         <div class="form-foot"><button class="primary">Salvar</button></div>
       </form>
