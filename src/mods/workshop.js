@@ -178,7 +178,11 @@ function scan(inst, id) {
   for (const file of findFiles(path.join(dir, 'mods'), 'mod.info')) {
     const info = parseModInfo(file);
     if (!info.id || mods.has(info.id)) continue;
-    mods.set(info.id, { id: info.id, name: info.name || info.id, require: splitList((info.require || '').replace(/,/g, ';')).map(stripSlash) });
+    const ids = v => splitList((v || '').replace(/,/g, ';')).map(stripSlash).filter(Boolean);
+    mods.set(info.id, {
+      id: info.id, name: info.name || info.id, require: ids(info.require),
+      loadAfter: ids(info.loadModAfter), loadBefore: ids(info.loadModBefore),
+    });
   }
   const maps = new Set();
   for (const modDir of fs.existsSync(path.join(dir, 'mods')) ? fs.readdirSync(path.join(dir, 'mods')) : []) {
@@ -266,6 +270,45 @@ export function setActive(inst, { mods, maps }) {
   if (Array.isArray(mods)) st.mods = mods.map(String).map(stripSlash).filter(Boolean);
   if (Array.isArray(maps)) st.maps = maps.map(String).filter(Boolean);
   writeState(inst, st);
+}
+
+// Reorders the enabled mod ids so every mod loads after what it requires / asks to load after
+// (require=, loadModAfter=, loadModBefore= from mod.info). Stable: mods with no rule between
+// them keep their current relative order, so a hand-tuned list only changes where it must.
+export function autoSort(inst) {
+  const st = readState(inst);
+  if (!st) throw httpError(409, 'O arquivo de configuração do servidor ainda não existe.');
+  const c = cache(inst);
+  const info = new Map();
+  for (const id of st.items) {
+    // Read mod.info again from disk: older cache entries don't have loadModAfter/Before.
+    const s = fs.existsSync(contentDir(inst, id)) ? scan(inst, id) : null;
+    if (s && c[id]) Object.assign(c[id], s);
+    for (const m of s?.mods || c[id]?.mods || []) if (!info.has(m.id)) info.set(m.id, m);
+  }
+  const order = st.mods;
+  const pos = new Map(order.map((id, i) => [id, i]));
+  const after = new Map(order.map(id => [id, new Set()])); // id -> ids that must come before it
+  const edge = (first, then) => { if (first !== then && pos.has(first) && pos.has(then)) after.get(then).add(first); };
+  for (const id of order) {
+    const m = info.get(id);
+    if (!m) continue;
+    for (const r of [...(m.require || []), ...(m.loadAfter || [])]) edge(r, id);
+    for (const r of m.loadBefore || []) edge(id, r);
+  }
+  // Kahn's algorithm, always taking the ready mod that is highest in the current list.
+  const out = [], done = new Set(), cycle = [];
+  while (out.length < order.length) {
+    let next = order.find(id => !done.has(id) && [...after.get(id)].every(p => done.has(p)));
+    // Circular rule: take the first remaining one anyway and go on.
+    if (!next) { next = order.find(id => !done.has(id)); cycle.push(next); }
+    out.push(next); done.add(next);
+  }
+  const moved = out.filter((id, i) => order[i] !== id).length;
+  const missing = [...new Set(order.flatMap(id => (info.get(id)?.require || []).filter(r => !pos.has(r))))];
+  if (moved) { st.mods = out; writeState(inst, st); }
+  save();
+  return { moved, cycle, missing, unknown: order.filter(id => !info.has(id)) };
 }
 
 export function remove(inst, id, deleteFiles) {

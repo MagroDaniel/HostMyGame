@@ -558,6 +558,11 @@ api.put('/instances/:id/mods/workshop', ws, (req, res) => {
   log(req, 'alterou mods ativos', req.inst.cfg.name);
   res.json({ ok: true });
 });
+api.post('/instances/:id/mods/workshop/sort', ws, (req, res) => {
+  const r = mods.workshop.autoSort(req.inst);
+  if (r.moved) log(req, 'ordenou mods automaticamente', req.inst.cfg.name);
+  res.json(r);
+});
 api.delete('/instances/:id/mods/workshop/:wid', ws, (req, res) => {
   mods.workshop.remove(req.inst, req.params.wid, req.query.files === '1');
   log(req, 'removeu mod da Oficina', req.inst.cfg.name, req.params.wid);

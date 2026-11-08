@@ -410,7 +410,8 @@ function renderWorkshopInstalled(box, d, data, reload) {
     <div class="ws-layout">
       <div class="mod-list">${data.items.map(it => workshopItem(it, buildTag)).join('')}</div>
       <div class="card load-order">
-        <h3>Ordem de carregamento</h3>
+        <div class="load-order-head"><h3>Ordem de carregamento</h3>
+          ${enabled.length > 1 ? `<button class="small" id="wsAutoSort" title="Reordena pelas dependências declaradas em cada mod.info (require, loadModAfter, loadModBefore)">${icon('sliders')} Ordenar automaticamente</button>` : ''}</div>
         ${enabled.length ? `<ol>${data.mods.map((m, i) => `
           <li data-mod="${esc(m.id)}"><span class="${m.known ? '' : 'muted'}" title="${m.known ? '' : 'Não pertence a nenhum item da lista'}">${esc(m.id)}</span>
             <span class="order-btns"><button class="small ghost" data-move="-1" ${i === 0 ? 'disabled' : ''} aria-label="Subir">▲</button><button class="small ghost" data-move="1" ${i === enabled.length - 1 ? 'disabled' : ''} aria-label="Descer">▼</button></span></li>`).join('')}</ol>`
@@ -445,6 +446,14 @@ function renderWorkshopInstalled(box, d, data, reload) {
     const m = cb.dataset.maptoggle;
     await saveActive(undefined, cb.checked ? [m, ...data.maps] : data.maps.filter(x => x !== m));
   })));
+  $('#wsAutoSort')?.addEventListener('click', act(async () => {
+    const r = await api('POST', instApi(d.id, '/mods/workshop/sort'));
+    const notes = [];
+    if (r.cycle.length) notes.push(`dependência circular em ${r.cycle.join(', ')}`);
+    if (r.missing.length) notes.push(`faltando: ${r.missing.join(', ')}`);
+    toast(`${r.moved ? `Ordem ajustada (${r.moved} posição(ões) mudaram)` : 'A ordem já estava certa'}${notes.length ? ` · ${notes.join(' · ')}` : ''}`, notes.length ? 'warn' : 'ok');
+    reload();
+  }));
   $$('[data-move]', box).forEach(b => b.addEventListener('click', act(async () => {
     const id = b.closest('[data-mod]').dataset.mod;
     const i = enabled.indexOf(id), j = i + Number(b.dataset.move);
