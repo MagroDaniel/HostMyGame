@@ -238,6 +238,8 @@ kbd { font-family: var(--mono); font-size: 11px; background: var(--g800); border
 .notice { background: rgba(59, 130, 246, .12); border-left: 4px solid var(--accent); border-radius: var(--radius); padding: 10px 14px; margin: 0 0 16px; font-size: 13.5px; color: var(--g100); }
 .notice.warn { background: rgba(234, 179, 8, .12); border-left-color: var(--warn); }
 .notice.bad { background: rgba(239, 68, 68, .12); border-left-color: var(--bad); }
+.conflict-list { margin: 6px 0 0; padding-left: 20px; display: grid; gap: 2px; }
+.conflict-list code { font-family: var(--mono); font-size: 12.5px; }
 .release-notes { max-height: 200px; overflow: auto; background: var(--console); padding: 10px 12px; border-radius: var(--radius); font-family: var(--mono); font-size: 12px; white-space: pre-wrap; margin: 0 0 12px; }
 
 /* ---------- forms ---------- */

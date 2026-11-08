@@ -10,7 +10,7 @@ import { applyConfigWrite } from './configfiles.js';
 import { LogTail } from './logtail.js';
 import { Rcon, TelnetConsole, a2sInfo, bedrockPing, minecraftPing } from './protocols.js';
 import { resolveJava } from './providers/java.js';
-import { appInfo, installApp, installedBuild, windowsLaunch } from './providers/steamcmd.js';
+import { appInfo, installApp, installedBuild, pruneWorkshopRegistry, windowsLaunch } from './providers/steamcmd.js';
 import { installMinecraft, minecraftLaunchArgs } from './providers/minecraft.js';
 import { installDownload } from './providers/download.js';
 import { prepareAssettoServer } from './providers/assettoserver.js';
@@ -306,6 +306,12 @@ export class Instance extends EventEmitter {
     const ready = this.effective('ready');
     this.readyRe = ready ? new RegExp(ready) : null;
     const pty = this.usesPty();
+    // Servers that download Workshop items themselves (Project Zomboid) crash if Steam's registry
+    // lists items whose files were deleted. Also runs on automatic restarts.
+    try {
+      const stale = pruneWorkshopRegistry(this.dir);
+      if (stale.length) this.print(`Registro da Oficina corrigido: ${stale.length} item(ns) sem arquivos serão baixados de novo (${stale.join(', ')})`, 'panel');
+    } catch (e) { this.print(`Não foi possível conferir o registro da Oficina: ${e.message}`, 'panel'); }
     this.print(`Iniciando${pty ? ' (pseudoconsole)' : ''}: ${cmd} ${args.join(' ')}`, 'panel');
 
     const proc = await startProcess(cmd, args, { cwd, env, pty });

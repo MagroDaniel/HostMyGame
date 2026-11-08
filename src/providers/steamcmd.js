@@ -87,8 +87,36 @@ function installAnonymous({ dir, appId, branch, betaPassword, log, onSpawn }) {
 }
 
 // Downloads Workshop items into <dir>/steamapps/workshop/content/<appId>/<item>, where dedicated servers look for them.
+// Steam keeps a registry of downloaded Workshop items (steamapps/workshop/appworkshop_<app>.acf).
+// If an item's folder is gone but its entry stays, Steam reuses "local" files that no longer exist
+// when downloading other items that share them, and the download fails with "Missing game files"
+// (the Project Zomboid server then crashes on start). Drop the entries whose folder is missing,
+// or the given ids, so Steam downloads them from scratch. Returns the ids removed.
+export function pruneWorkshopRegistry(dir, { ids = null } = {}) {
+  const wsDir = path.join(dir, 'steamapps', 'workshop');
+  if (!fs.existsSync(wsDir)) return [];
+  const removed = new Set();
+  for (const name of fs.readdirSync(wsDir)) {
+    const m = name.match(/^appworkshop_(\d+)\.acf$/);
+    if (!m) continue;
+    const file = path.join(wsDir, name);
+    const text = fs.readFileSync(file, 'utf8');
+    const contentDir = path.join(wsDir, 'content', m[1]);
+    // Item entries are leaf blocks:  "<id>" { "key" "value" ... }
+    const out = text.replace(/^[ \t]*"(\d+)"\s*\{[^{}]*\}[ \t]*\r?\n/gm, (block, id) => {
+      const drop = ids ? ids.includes(id) : !fs.existsSync(path.join(contentDir, id));
+      if (drop) removed.add(id);
+      return drop ? '' : block;
+    });
+    if (out !== text) fs.writeFileSync(file, out);
+  }
+  return [...removed];
+}
+
 export function downloadWorkshopItems({ dir, appId, itemIds, log }) {
   return queued(async () => {
+    const stale = pruneWorkshopRegistry(dir);
+    if (stale.length) log(`Registro da Oficina corrigido: ${stale.length} item(ns) sem arquivos (${stale.join(', ')})`);
     const done = new Set();
     let failure = null;
     const args = ['+force_install_dir', dir, '+login', 'anonymous'];

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { save } from '../store.js';
 import { httpError } from '../util.js';
-import { downloadWorkshopItems } from '../providers/steamcmd.js';
+import { downloadWorkshopItems, pruneWorkshopRegistry } from '../providers/steamcmd.js';
 
 // Steam Workshop mods for Project Zomboid. The server .ini is the source of truth:
 //   WorkshopItems=<workshop ids>  Mods=<mod ids, load order>  Map=<map folders>;Muldraugh, KY
@@ -177,11 +177,14 @@ function scan(inst, id) {
   const mods = new Map();
   for (const file of findFiles(path.join(dir, 'mods'), 'mod.info')) {
     const info = parseModInfo(file);
-    if (!info.id || mods.has(info.id)) continue;
+    if (!info.id) continue;
     const ids = v => splitList((v || '').replace(/,/g, ';')).map(stripSlash).filter(Boolean);
+    const prev = mods.get(info.id);
+    // B42 mods ship one mod.info per version folder: keep the first, but merge the incompatibility lists.
+    if (prev) { prev.incompatible = [...new Set([...prev.incompatible, ...ids(info.incompatible)])]; continue; }
     mods.set(info.id, {
       id: info.id, name: info.name || info.id, require: ids(info.require),
-      loadAfter: ids(info.loadModAfter), loadBefore: ids(info.loadModBefore),
+      loadAfter: ids(info.loadModAfter), loadBefore: ids(info.loadModBefore), incompatible: ids(info.incompatible),
     });
   }
   const maps = new Set();
@@ -214,18 +217,42 @@ export async function list(inst) {
   if (unknown.length) {
     try { for (const d of Object.values(await details(unknown))) remember(inst, d); save(); } catch { /* offline */ }
   }
-  // Re-scan items the server downloaded on its own since the last look.
-  for (const id of st.items) if (c[id] && !c[id].mods.length && fs.existsSync(contentDir(inst, id))) { const s = scan(inst, id); if (s) Object.assign(c[id], s); }
+  // Re-scan items the server downloaded on its own since the last look, and entries cached
+  // before the panel read incompatible= from mod.info.
+  let rescanned = false;
+  for (const id of st.items) {
+    if (!c[id] || !fs.existsSync(contentDir(inst, id))) continue;
+    if (c[id].mods.length && c[id].mods.every(m => Array.isArray(m.incompatible))) continue;
+    const s = scan(inst, id);
+    if (s) { Object.assign(c[id], s); rescanned = true; }
+  }
+  if (rescanned) save();
   const enabled = new Set(st.mods);
   const allIds = new Set(st.items.flatMap(id => (c[id]?.mods || []).map(m => m.id)));
+  const conflictsOf = m => (m.incompatible || []).filter(x => x !== m.id && enabled.has(x));
   const items = st.items.map(id => ({
     id, title: c[id]?.title || `Item ${id}`, preview: c[id]?.preview || null, tags: c[id]?.tags || [], size: c[id]?.size || 0,
     downloaded: fs.existsSync(contentDir(inst, id)),
-    mods: (c[id]?.mods || []).map(m => ({ ...m, enabled: enabled.has(m.id), missing: m.require.filter(r => !enabled.has(r)) })),
+    mods: (c[id]?.mods || []).map(m => ({
+      ...m, enabled: enabled.has(m.id), missing: m.require.filter(r => !enabled.has(r)),
+      conflicts: enabled.has(m.id) ? conflictsOf(m) : [],
+    })),
     maps: (c[id]?.maps || []).map(m => ({ name: m, enabled: st.maps.includes(m) })),
   }));
+  // Each conflicting pair once, whichever side declares it.
+  const seen = new Set(), conflicts = [];
+  for (const it of items) for (const m of it.mods) for (const other of m.conflicts) {
+    const key = [m.id, other].sort().join('\n');
+    if (!seen.has(key)) { seen.add(key); conflicts.push({ a: m.id, b: other }); }
+  }
+  const pairOf = new Map();
+  for (const { a, b } of conflicts) {
+    pairOf.set(a, [...(pairOf.get(a) || []), b]);
+    pairOf.set(b, [...(pairOf.get(b) || []), a]);
+  }
+  for (const it of items) for (const m of it.mods) m.conflicts = m.enabled ? (pairOf.get(m.id) || []) : [];
   return {
-    iniExists: true, b42: isB42(inst), items,
+    iniExists: true, b42: isB42(inst), items, conflicts,
     mods: st.mods.map(id => ({ id, known: allIds.has(id) })),
     maps: st.maps.filter(m => m !== VANILLA_MAP),
   };
@@ -327,7 +354,11 @@ export function remove(inst, id, deleteFiles) {
   writeState(inst, st);
   delete cache(inst)[id];
   save();
-  if (deleteFiles) fs.rmSync(contentDir(inst, id), { recursive: true, force: true });
+  if (deleteFiles) {
+    fs.rmSync(contentDir(inst, id), { recursive: true, force: true });
+    // Otherwise Steam still thinks the files are there (see pruneWorkshopRegistry).
+    pruneWorkshopRegistry(inst.dir, { ids: [String(id)] });
+  }
 }
 
 // Re-downloads every item (Workshop updates); the server also does this on start.

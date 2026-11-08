@@ -407,6 +407,10 @@ function renderWorkshopInstalled(box, d, data, reload) {
   box.innerHTML = `
     ${data.items.length ? `
     <div class="notice">Mudanças nos mods só valem depois de <b>reiniciar o servidor</b>. Ao iniciar, o servidor também confere se há versões novas na Oficina.</div>
+    ${data.conflicts?.length ? `<div class="notice warn">
+      <b>${data.conflicts.length === 1 ? '1 par de mods ativos é incompatível' : `${data.conflicts.length} pares de mods ativos são incompatíveis`}</b>, segundo o próprio mod.info. Deixe só um de cada par:
+      <ul class="conflict-list">${data.conflicts.map(c => `<li><code>${esc(c.a)}</code> × <code>${esc(c.b)}</code></li>`).join('')}</ul>
+    </div>` : ''}
     <div class="ws-layout">
       <div class="mod-list">${data.items.map(it => workshopItem(it, buildTag)).join('')}</div>
       <div class="card load-order">
@@ -486,7 +490,8 @@ function workshopItem(it, buildTag) {
       ${it.mods.length || it.maps.length ? `<div class="ws-mods">
         ${it.mods.map(m => `
           <label class="check"><input type="checkbox" data-modtoggle="${esc(m.id)}" ${m.enabled ? 'checked' : ''}> <span><b>${esc(m.id)}</b>${m.name !== m.id ? ` <span class="muted">— ${esc(m.name)}</span>` : ''}
-          ${m.enabled && m.missing.length ? `<br><span class="hint err">Precisa de: ${m.missing.map(esc).join(', ')} (adicione o item que fornece esse mod)</span>` : ''}</span></label>`).join('')}
+          ${m.enabled && m.missing.length ? `<br><span class="hint err">Precisa de: ${m.missing.map(esc).join(', ')} (adicione o item que fornece esse mod)</span>` : ''}
+          ${m.conflicts?.length ? `<br><span class="hint err">Incompatível com: ${m.conflicts.map(esc).join(', ')} (também ativo)</span>` : ''}</span></label>`).join('')}
         ${it.maps.map(m => `<label class="check"><input type="checkbox" data-maptoggle="${esc(m.name)}" ${m.enabled ? 'checked' : ''}> <span>${icon('network')} Mapa <b>${esc(m.name)}</b></span></label>`).join('')}
       </div>` : `<div class="ws-mods muted small">${it.downloaded ? 'Nenhum mod.info encontrado neste item.' : 'Os Mod IDs aparecem depois do download.'}</div>`}
     </div>`;
